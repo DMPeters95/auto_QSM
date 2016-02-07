@@ -1,0 +1,81 @@
+#!/bin/bash
+
+folder_root=$(cd "$(dirname "$0")"; pwd)
+
+
+# Make directory
+mkdir -p ${folder_root}/bin
+mkdir -p ${folder_root}/buffer
+
+# Change permission
+chmod +x ${folder_root}/src/*
+
+
+
+
+# User configuration
+if [ $(uname) == "Darwin" ]
+then
+	opt_sed="-i \"\""
+else
+	opt_sed="-i"
+fi
+comm_sed="s|^folder_root=\(.*\)|folder_root=\"${folder_root}\"|"
+sed "${opt_sed}" "${comm_sed}" ${folder_root}/etc/config_user
+
+read -p "Enter the full path of the folder for DICOM archive: (If empty, ${HOME}/data will be used)
+" folder_data
+[ "x${folder_data}" == "x" ] && folder_data="${HOME}/data"
+comm_sed="s|^folder_data=\(.*\)|folder_data=\"${folder_data}\"|"
+sed "${opt_sed}" "${comm_sed}" ${folder_root}/etc/config_user
+
+read -p "Enter the AETitle for this recon server: (If empty, AutoQSMServer will be used)
+" AETitle_server
+[ "x${AETitle_server}" == "x" ] && AETitle_server="AutoQSMServer"
+comm_sed="s|^AETitle_server=\(.*\)|AETitle_server=${AETitle_server}|"
+sed "${opt_sed}" "${comm_sed}" ${folder_root}/etc/config_user
+
+read -p "Enter the port for this recon server: (If empty, 4000 will be used)
+" port_server
+[ "x${port_server}" == "x" ] && port_server=4000
+comm_sed="s|^port_server=\(.*\)|port_server=${port_server}|"
+sed "${opt_sed}" "${comm_sed}" ${folder_root}/etc/config_user
+
+
+
+
+# Edit crontab
+# Backup the current crontab
+crontab -l 2>/dev/null > ${folder_root}/crontab.bak
+# Add new entries
+# It requires MEDIN program installed in ${HOME}/MEDI/, otherwise change the following entry_crontab accordingly.
+[ ! -d "${HOME}/MEDI" ] && echo "Warning: Script may not work since no MEDIN program found in ${HOME}/MEDI/" 
+if [ $(uname) == "Darwin" ]
+then
+	name_lpath="DYLD_LIBRARY_PATH"
+else
+	name_lpath="LD_LIBRARY_PATH"
+fi
+entry_crontab="\
+# This is the beginning of crontab related to Auto QSM recon
+@reboot export PATH=$PATH:${folder_root}/bin:/usr/local/sbin:/opt/local/bin:${HOME}/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/X11/bin;\
+export ${name_lpath}=${HOME}/MEDI/lib;\
+export DCMDICTPATH=${HOME}/MEDI/etc/gems-dicom-dict_Offis.txt;\
+mkdir -p ${folder_root}/buffer;\
+${folder_root}/src/check_auto_QSM >> ${folder_root}/buffer/log_stdout_daemon 2>&1
+*/1 * * * * export PATH=$PATH:${folder_root}/bin:/usr/local/sbin:/opt/local/bin:${HOME}/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/X11/bin;\
+export ${name_lpath}=${HOME}/MEDI/lib;\
+export DCMDICTPATH=${HOME}/MEDI/etc/gems-dicom-dict_Offis.txt;\
+mkdir -p ${folder_root}/buffer;\
+${folder_root}/src/check_auto_QSM >> ${folder_root}/buffer/log_stdout_daemon 2>&1
+# This is the end of crontab related to Auto QSM recon
+"
+(sed '/^# This is the beginning of crontab related to Auto QSM recon$/ {
+	N
+	s/^\(.*\)\n\(.*\)$/\2'$"\n"'\1/
+	/^# This is the end of crontab related to Auto QSM recon\n/d
+	D
+}' <${folder_root}/crontab.bak; echo "${entry_crontab}") | crontab -
+
+
+

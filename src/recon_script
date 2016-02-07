@@ -1,0 +1,35 @@
+#!/bin/bash
+# Run MEDIN recon 
+# (or any reconstruction script which takes DICOM images and store output in SWI/ or QSM/)
+#
+# $1: Scanner brand
+# $2: Input folder (default: DICOM)
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+brand_MF=$1
+folder_input=$2
+[ "x${folder_input}" == "x" ] && folder_input="DICOM"
+
+# Run MEDIN
+if [ ${brand_MF} == "SIEMENS" ]
+then
+	medin ${folder_input} -t SWI -of MS -si -di
+	# Odd echo and even echo separately
+	medin ${folder_input} -t QSM_odd -si -sk 1 1 -di
+	medin ${folder_input} -t QSM_even -si -sk 2 1 -di
+	# Average odd and even echo QSM
+	echo "Averaging odd and even echoes"
+	mkdir QSM
+	${DICOM_AVE} QSM_odd QSM_even QSM
+else
+	medin ${folder_input} -t SWI -of MS -si
+	medin ${folder_input} -t QSM -si
+fi

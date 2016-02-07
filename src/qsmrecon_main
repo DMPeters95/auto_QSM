@@ -1,0 +1,263 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+
+
+# Parameters
+file_name_info="file_info"
+
+# Functions
+is_complete()
+{
+	# $1: dicom folder
+	# $2: scanner brand
+
+	n_dicom=`ls ${1} | grep -v ${file_name_info} | wc -w`
+	if [ ${n_dicom} -ne 0 ] 
+	then
+		file_dicom=`find ${1} | sed -n '1!p' | grep -v ${file_name_info} | head -n 1`
+
+		case ${2} in
+			"SIEMENS" )
+				numofecho=`get_gdcm_field ${file_dicom} lContrasts`
+				Locs=`get_gdcm_field ${file_dicom} sKSpace.lImagesPerSlab`
+				[ "x${numofecho}" == "x" ] && numofecho="0"
+				[ "x${Locs}" == "x" ] && Locs="0"
+
+				echo "file_name_dicom = " `basename ${file_dicom}`
+				echo "numofecho       = " $numofecho
+				echo "Locs            = " $Locs
+
+				n_expectfile=$[ $numofecho * $Locs * 2 ]
+				;;
+
+			* )
+				numofecho=`get_dcm_field ${file_dicom} 0019,107e`
+				Locs=`get_dcm_field ${file_dicom} 0021,104f`
+				SliceThick=`get_dcm_field ${file_dicom} 0018,0050`
+				SliceSpacing=`get_dcm_field ${file_dicom} 0018,0088`
+				zip=`echo "${SliceThick}/${SliceSpacing}" | bc`
+				[ "x${numofecho}" == "x" ] && numofecho="0"
+				[ "x${Locs}" == "x" ] && Locs="0"
+				[ "x${zip}" == "x" ] && zip="0"
+
+				echo "file_name_dicom = " `basename ${file_dicom}`
+				echo "numofecho       = " $numofecho
+				echo "Locs            = " $Locs		
+				echo "zip             = " $zip			
+		
+				n_expectfile=$[ $numofecho * $Locs *  $zip * 3 ]
+				;;
+
+		esac
+
+		echo "Expected: ${n_expectfile}, Received: ${n_dicom}"
+		if [ ${n_dicom} -ne ${n_expectfile} ]
+		then
+			return 1
+		else
+			return 0
+		fi	
+	else
+		echo "Received: ${n_dicom}"
+		return 1
+	fi
+
+				
+}
+
+
+
+
+
+
+
+
+
+# Working Loop
+i=0
+while [ 1 ]
+do
+
+	i=$[$i + 1]
+
+	sleep ${period_recon}
+
+	for each_folder in $(ls ${folder_pool})
+	do
+
+		log "New folder found: ${each_folder}"
+
+		# Save condition flag 1 (working) to condition file
+		echo "1" | cat > ${file_condition_QSM}
+
+		# Check if the recon would be blocked (by auto backup)
+		if [ -e ${file_block_QSM} ] && [ $(cat ${file_block_QSM}) -eq 1 ]
+		then
+			log "QSM recon blocked by auto backup function"
+			break
+		fi
+
+		# Check DICOM number in this folder
+		
+		if [ ! "x$(ls ${folder_pool}/${each_folder} | grep -v ${file_name_info})" == "x" ]
+		then
+
+			# If no info file is present, then it is an incomplete folder
+			if [ ! -e ${folder_pool}/${each_folder}/${file_name_info} ] 
+			then
+				log "Incomplete transfer for folder: ${each_folder}. Folder Skipped"
+				continue
+			fi
+
+			# Retrive AET of remote peer
+			AET_peer=`sed -n '1p' ${folder_pool}/${each_folder}/${file_name_info}`
+			# Retrive time stamp
+			time_stamp=`sed -n '2p' ${folder_pool}/${each_folder}/${file_name_info}`
+
+			# Check the brand of the scanner (Default: GE)
+			brand_MF=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $1}' | head -n 1`
+			[ "x${brand_MF}" == "x" ] && brand_MF="GE"
+
+			
+
+			# For SIEMENS
+			# Sometimes non-gre scans go into the same folder as gre scans
+			# Need to move non-gre scans elsewhere
+			if [ ${flag_move_nongre} -eq 1 ] && [ ${brand_MF} == "SIEMENS" ]
+			then
+
+				files_move=`dcmdump +P 0018,0020 +P 0018,0024 +F +r +sd ${folder_pool}/${each_folder} 2> /dev/null | \
+							grep -v file_info | \
+							sed -n '/^#/ {N; /\[GR\].*ScanningSequence/! {s/^.*\/\([^\n]*\n\)/\1/; P;};}'`
+				if [ "x${files_move}" == "x" ]
+				then
+					n_files_move=0
+				else
+					n_files_move=`echo "${files_move}" | wc -l`
+				fi
+
+				if [ ${n_files_move} -ne 0 ]
+				then
+					mkdir -p ${folder_trash}/${each_folder}
+					mv ${files_move} ${folder_trash}/${each_folder}/
+					cp -f ${folder_pool}/${each_folder}/${file_name_info} ${folder_trash}/${each_folder}/
+					log "${n_files_move} non-GRE dicoms has been moved to ${folder_trash}/${each_folder}"
+				fi
+			fi
+			# Now only gre scan is supposed to stay
+
+			# Check if the folder has a complete transfer
+			is_complete ${folder_pool}/${each_folder} ${brand_MF}
+			flag_is_complete=$?
+			if [ ! ${flag_is_complete} -eq 0 ] 
+			then 
+				log "Receiving incomplete for folder: ${each_folder}. Skipped"
+				continue
+			fi
+
+
+
+			# ============ Receiving done ============ #
+			log "Receiving done!!"
+
+			# Remove info file
+			rm ${folder_pool}/${each_folder}/${file_name_info} 
+
+			file_dicom=`find ${folder_pool}/${each_folder} | sed -n '1!p' | grep -v ${file_name_info} | head -n 1`
+
+			# Retrive Exam number
+			exam_no=`get_dcm_field ${file_dicom} 0020,0010`
+			# Retrive Series number
+			series_no=`get_dcm_field ${file_dicom} 0020,0011`
+			# Retrive StudyInstanceUID
+			study_instance_uid=`get_dcm_field ${file_dicom} 0020,000d`
+
+
+			# ================ Run MEDI ================ #
+			if [ ${brand_MF} == "SIEMENS" ]
+			then
+				work_folder=${folder_data}/${AET_peer}/${study_instance_uid}/${series_no}
+			else
+				work_folder=${folder_data}/${AET_peer}/${exam_no}/${series_no}
+			fi
+			
+			mkdir -p ${work_folder}/DICOM
+
+			# Fix bug with "Argument list too long"
+			find ${folder_pool}/${each_folder}/ -type f -name '*' -exec mv {} ${work_folder}/DICOM/ \;
+			# Clean up
+			rm -r ${folder_pool}/${each_folder}			
+
+			olddir=${curdir}
+			cd ${work_folder}
+			
+
+			# QSM recon begin
+			echo "Peer             = " ${AET_peer}
+			echo "StudyInstanceUID = " ${study_instance_uid}
+			echo "Exam Number      = " ${exam_no}			
+			echo "Series Number    = " ${series_no}						
+
+
+			# Run reconstruction script which takes input of DICOM/ and store output in SWI/ or QSM/)
+			${RECON} ${brand_MF} DICOM
+
+			# Send QSM back
+			# Get command for pushing
+			${COMMAND_PUSH} ${AET_peer} ${work_folder}/SWI/*
+			${COMMAND_PUSH} ${AET_peer} ${work_folder}/QSM/*
+
+			cd ${olddir}
+
+
+
+			# Log
+			space=`df -kh | sed '/ /! {N; s/\n//;}' | awk '$1=="'${disk_data}'" {print $4}'`
+			if [ ${brand_MF} == "SIEMENS" ]
+			then
+				log "QSM done for: peer ${AET_peer} uid ${study_instance_uid} series ${series_no}"
+				echo "[${AET_peer}] uid ${study_instance_uid} series ${series_no} ${time_stamp}" | cat >> ${file_log_QSM}
+				echo -e "uid ${study_instance_uid} \nSeries number ${series_no}\nSpace left ${space}" | mail -s "New QSM from ${AET_peer}" ${email_notice}
+			else
+				log "QSM done for: peer ${AET_peer} exam ${exam_no} series ${series_no}"
+				echo "[${AET_peer}] exam ${exam_no} series ${series_no} ${time_stamp}" | cat >> ${file_log_QSM}
+				echo -e "Exam number ${exam_no} \nSeries number ${series_no}\nSpace left ${space}" | mail -s "New QSM from ${AET_peer}" ${email_notice}
+			fi
+			
+			# Recon successful, go to the next outer loop
+			i=0
+			continue 2
+
+		fi
+		# Empty folder, go to the next inner loop		
+
+	done
+
+
+	# No folder or all folder incomplete
+	# Save condition flag 0 (idle) to condition file
+	echo "0" | cat > ${file_condition_QSM}		
+
+	if [ $i -ge ${period_recon} ]
+	then
+
+		log "Idle"
+		i=0
+
+	fi
+
+done
+
+
+
+
+

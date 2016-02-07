@@ -1,0 +1,100 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/../etc/config_user
+
+folder_src="${folder_root}/src"
+folder_buffer="${folder_root}/buffer"
+folder_bin="${folder_root}/bin"
+folder_pool="${folder_buffer}/tmp"
+folder_trash="${folder_buffer}/trash"
+folder_config="${folder_root}/etc"
+[ ! -e ${folder_src} ] && mkdir -p ${folder_src}
+[ ! -e ${folder_buffer} ] && mkdir -p ${folder_buffer}
+[ ! -e ${folder_pool} ] && mkdir -p ${folder_pool}
+[ ! -e ${folder_trash} ] && mkdir -p ${folder_trash}
+[ ! -e ${folder_tmpfile} ] && mkdir -p ${folder_tmpfile}
+[ ! -e ${folder_config} ] && mkdir -p ${folder_config}
+
+DCMDUMP="dcmdump"
+DCMODIFY="dcmodify"
+GDCMDUMP="gdcmdump"
+DICOM_AVE="${folder_src}/dicom_ave"
+COMMAND_PUSH="${folder_src}/dcm2scanner"
+AVERAGE_BIN="average_binary"
+RECON="${folder_src}/recon_script"
+
+file_log_QSM="${folder_buffer}/log_QSM"
+file_condition_QSM="${folder_buffer}/condition_QSM"
+file_block_QSM="${folder_buffer}/block_qsmrecon"
+file_manual_switch_backup="${folder_buffer}/manual_switch_backup"
+
+email_notice="zhl2008@med.cornell.edu"
+
+period_recon=60
+period_check_log_size=50
+period_auto_backup=100
+
+file_scanner_list=${folder_config}/scanner_list
+
+# Leave blank as default
+disk_data_fix="/dev/sda1"
+disk_data=${disk_data_fix}
+if [ "x${disk_data}" == "x" ] 
+then
+	if [ $(uname) == "Darwin" ]
+	then
+		disk_data=`df -h | sed '/ /! {N; s/\n//;}' | awk '$NF=="/" {print $1}'`
+	else
+		disk_data=`df -h | sed '/ /! {N; s/\n//;}' | awk '$NF=="/home" {print $1}'`
+	fi	 
+fi
+# External drive is at end of list
+# Leave blank as default
+mount_backup_fix="/media/sf_share"
+mount_backup=${mount_backup_fix}
+
+
+limit_log_size="200000000" # 200MB
+margin_space="80000000" # Available space less than 80 GB
+margin_external="100000000"	# External space limit 100 GB for informing
+
+
+
+# file_log_stdout_qsmrecon="${folder_buffer}/log_stdout_qsmrecon"
+# file_log_stdout_dicom_listen="${folder_buffer}/log_stdout_dicom_listen"
+# file_log_stdout_backup="${folder_buffer}/log_stdout_backup"
+
+
+
+log()
+{
+	echo -n $(date +"[date %Y-%m-%d time %H:%M:%S]:")
+	echo "${@}"
+}
+
+get_folder_size()
+{
+	if [ $(uname) == "Darwin" ]
+	then
+		du ${3} -d ${2} ${1}
+	else
+		du ${3} --max-depth ${2} ${1}
+	fi
+}
+
+get_dcm_field()
+{
+	${DCMDUMP} +P ${2} ${1} 2>/dev/null | awk '{print $3}' | tr -d "[]"
+}
+
+get_gdcm_field()
+{
+	${GDCMDUMP} -C ${1} 2>/dev/null | grep $2 |  awk '{print $3}'
+}

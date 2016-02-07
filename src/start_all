@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# Start all processes for checking automatic QSM reconstruction
+${HOME}/auto_QSM/src/check_auto_QSM >> ${HOME}/auto_QSM/buffer/log_stdout_daemon 2>&1

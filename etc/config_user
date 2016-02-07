@@ -1,0 +1,10 @@
+folder_root="/home/zhe/auto_QSM"
+folder_data="/home/zhe/data"
+AETitle_server=AutoQSMServer
+port_server=4000
+flag_auto_backup=0          # Automatically back up data from system drive to external drive
+flag_check_log_size=1       # Keep log file size small
+flag_move_nongre=1          # Fix a bug for SIEMENS DICOM transfer
+
+
+

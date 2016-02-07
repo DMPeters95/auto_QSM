@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Script keeps listening for new DICOM files
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+
+#
+command_on_reception="'${folder_src}/store_info #p #f #a #c #r'"
+
+#eval storescp -v -aet MacServer -od ${folder_pool} -ss temp -xcr ${command_on_reception} 4000 
+eval storescp_mod --fork -v -aet ${AETitle_server} -od ${folder_pool} -ss temp -xcr ${command_on_reception} ${port_server} 

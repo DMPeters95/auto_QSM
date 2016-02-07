@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# Routine for checking log size
+# Prevent the log size from being too large
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+
+# Parameters
+file_log_stdout_qsmrecon="${folder_buffer}/log_stdout_qsmrecon_main"
+file_log_stdout_dicom_listen="${folder_buffer}/log_stdout_dicom_listen"
+file_log_stdout_auto_backup="${folder_buffer}/log_stdout_auto_backup"
+
+
+
+# Working loop
+while [ 1 ]
+do
+	sleep ${period_check_log_size}
+
+	# Check log size for QSM recon
+	size_log_qsmrecon=`ls -l ${file_log_stdout_qsmrecon} 2>/dev/null | awk '{ print $5 }'`
+	[ ! "x${size_log_qsmrecon}" == "x" ] && [ "${size_log_qsmrecon}" -gt "${limit_log_size}" ] && > ${file_log_stdout_qsmrecon}
+
+	# Check log size for Dicom listening
+	size_log_dicom_listen=`ls -tl ${file_log_stdout_dicom_listen} 2>/dev/null | awk '{ print $5 }'`
+	[ ! "x${size_log_dicom_listen}" == "x" ] && [ "${size_log_dicom_listen}" -gt "${limit_log_size}" ] && > ${file_log_stdout_dicom_listen}
+
+	# Check log size for backup
+	size_log_backup=`ls -tl ${file_log_stdout_auto_backup} 2>/dev/null | awk '{ print $5 }'`
+	[ ! "x${size_log_backup}" == "x" ] && [ "${size_log_backup}" -gt "${limit_log_size}" ] && > ${file_log_stdout_auto_backup}
+	
+done

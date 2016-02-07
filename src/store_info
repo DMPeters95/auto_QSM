@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Store the AET and timestamp of the first dicom in each folder (series)
+
+# $1: dicom_folder
+# $2: dicom_name
+# $3: sender AET
+# $4: receiver AET
+# $5: sender IP
+
+
+file_name_info="file_info"
+
+if [ ! -e $1/${file_name_info} ]
+then
+	time_stamp=`date +"date %Y-%m-%d time %H:%M"`
+	echo $3 > $1/${file_name_info}
+	echo $4 >> $1/${file_name_info}
+	echo $5 >> $1/${file_name_info}
+	echo $time_stamp >> $1/${file_name_info}
+	echo "Info file created"
+fi

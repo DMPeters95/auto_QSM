@@ -1,0 +1,34 @@
+#!/bin/bash
+# Push QSM DICOM to scanner directly or through relay server
+# $1: AETitle of scanner
+# $@: 
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/../etc/config_user
+
+file_scanner_list="${curdir}/../etc/scanner_list"
+port_relay=24007
+
+AET_peer=$1
+IP_peer=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $3}'`
+port_peer=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $4}'`
+server_relay_peer=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $5}'`
+shift
+
+#echo "ssh -f -L${port_relay}:${IP_peer}:${port_peer} ${server_relay_peer} sleep 5 && storescu -aec ${AET_peer} -aet MACVIEWER2 localhost ${port_relay} $@"
+if [ "x${server_relay_peer}" == "x" ]
+then
+	# Direct push
+	storescu -v -aet ${AETitle_server} -aec ${AET_peer} ${IP_peer} ${port_peer} $@
+else
+	# Push through relay server
+	ssh -f -L${port_relay}:${IP_peer}:${port_peer} ${server_relay_peer} sleep 5 && storescu -aec ${AET_peer} -aet MACVIEWER2 localhost ${port_relay} $@
+fi
+
+

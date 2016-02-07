@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Function for averaging Dicom files in two folders:
+# 	Suppose all pixel data is in 2-byte unsigned integer
+#	Dicom files to be averaged have the same filename
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+
+#
+folder_input_1=$1
+folder_input_2=$2
+folder_output=$3
+
+[ ! "x$(ls ${folder_output})" == "x" ] && rm ${folder_output}/*
+
+for filename in $(ls ${folder_input_1})
+do
+	filename_raw_1="${folder_input_1}/${filename}.0.raw"
+	filename_raw_2="${folder_input_2}/${filename}.0.raw"
+	filename_raw_out="${folder_output}/${filename}.0.raw"
+
+	# Dump pixel data to raw binary
+	${DCMDUMP} +W ${folder_input_1} ${folder_input_1}/${filename} 1>/dev/null 2>&1
+	${DCMDUMP} +W ${folder_input_2} ${folder_input_2}/${filename} 1>/dev/null 2>&1	
+
+	# Average binary data
+	${AVERAGE_BIN} ${filename_raw_1} ${filename_raw_2} ${filename_raw_out}
+
+	# Embed binary data back to dicom
+	cp ${folder_input_1}/${filename} ${folder_output}/${filename}
+	${DCMODIFY} -mf "(7fe0,0010)=${filename_raw_out}" ${folder_output}/${filename} 1>/dev/null 2>&1
+	rm "${folder_output}/${filename}.bak"
+
+	# Clear binary files
+	rm ${filename_raw_1} ${filename_raw_2} ${filename_raw_out}
+done

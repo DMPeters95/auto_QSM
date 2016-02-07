@@ -1,0 +1,182 @@
+#!/bin/bash
+
+# Check if there is enough space left in the archive disk.
+# If not, backup all exam files to external drive
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+
+# Work loop
+echo "0" | cat > ${file_block_QSM}
+flag_backup=1
+while [ 1 ]
+do
+
+	sleep ${period_auto_backup}
+
+	hour_now=`date +"%H"`
+
+	# Chack manual switch
+	flag_manual_switch=1
+	[ -e ${file_manual_switch_backup} ] && flag_manual_switch=`cat ${file_manual_switch_backup}`
+	[ ${flag_manual_switch} -eq 2 ] && flag_backup=1
+
+	# Backup could only be run between 3AM and 5AM
+	# or manual enforced at anytime (flag_manual_switch == 2)
+	# and can only run once per day (flag_backup = 1 --> 0)
+	if     [ ${flag_manual_switch} -eq 2 ] \
+		|| [ ${flag_manual_switch} -eq 1    -a    ${hour_now} -ge 3    -a    ${hour_now} -le 5 ]
+	then
+
+		if [ ${flag_backup} -eq 1 ]
+		then
+
+			# Check main disk space
+			space=`df -k | sed '/ /! {N; s/\n//;}' | awk '$1=="'${disk_data}'" {print $4}'`
+			# If space is none, meaning ${disk_data} not correct
+			if [ "x${space}" == "x" ]
+			then
+				log "System drive: ${disk_data} not detected."
+				continue
+			fi
+			
+			if [ ${space} -lt ${margin_space} ]	
+			then
+
+				# Need for backup
+
+				# Check status of QSM recon
+				if [ ! -e ${file_condition_QSM} ] || [ $(cat ${file_condition_QSM}) -eq 1 ]
+				then
+					# QSM is running
+					log "QSM recon running. Backup is not allowed"
+					continue
+				fi
+
+				# QSM recon is idle
+				# Block the recon
+				echo "1" | cat > ${file_block_QSM}
+
+				# Check status of QSM recon, again
+				if [ $(cat ${file_condition_QSM}) -eq 1 ]
+				then
+					# QSM is running, block failed 
+					log "QSM recon running. Backup is not allowed"
+
+					# Release the recon, wait for another chance
+					echo "0" | cat > ${file_block_QSM}
+					continue
+				fi	
+
+
+
+				# Now we could start the backup
+				echo ""
+				log "========== Backup initiated =========="
+
+				log "Data folder content:"
+				get_folder_size ${folder_data} 1 -h
+
+				# External drive is at end of list
+				[ "x${mount_backup_fix}" == "x" ] && mount_backup=`df -k | sed '/ /! {N; s/\n//;}' | tail -n 1 | awk '{print $NF}'`
+				[ ! -e ${mount_backup}/data ] && mkdir -p ${mount_backup}/data
+
+
+				for AET_peer in $(ls ${folder_data})
+				do
+					log "Now copying ${AET_peer} to ${mount_backup}"
+
+					# Check if there is enough space on the external drive
+					space_backup=`df -k | sed '/ /! {N; s/\n//;}' | awk '$NF=="'${mount_backup}'" {print $4}'`
+					[ "x${space_backup}" == "x" ] && space_backup="0"
+					size_folder=`get_folder_size ${folder_data}/${AET_peer} 0 -k | awk '{ print $1 }'`
+
+					log "Size of ${AET_peer}: ${size_folder}, Available space_backup ${space_backup}"
+
+
+					if [ "${space_backup}" -lt "${size_folder}" ]
+					then
+
+						# Not enough space for the current folder
+						log "No enough space on ${mount_backup}. Stopping backup"
+						echo -e "No enough space on ${mount_backup} (size ${space_backup}) for folder {AET_peer} (size ${siz_folder})" | mail -s "Backup disk full for Hackintosh" ${email_notice}
+
+						# Stop backup
+						flag_backup=0
+
+						# Unblock the recon
+						echo "0" | cat > ${file_block_QSM}							
+
+						break
+
+					else
+
+						cp -rf ${folder_data}/${AET_peer} ${mount_backup}/data/ 
+						flag_copy_done=$?
+						if [ ! ${flag_copy_done} -eq 0 ] 
+						then
+							# Copy not done properly
+							log "Copying failed. Stopping backup"
+
+							# Unblock the recon
+							echo "0" | cat > ${file_block_QSM}	
+
+							break
+
+						fi
+
+						# Copying done
+						log "Copying done."
+						rm -rf ${folder_data}/${AET_peer}
+
+						log "Archive ${AET_peer} removed"
+
+					fi
+
+				done
+
+
+			 	space=`df -k | sed '/ /! {N; s/\n//;}' | awk '$1=="'${disk_data}'" {print $4}'`
+			 	log "New avaiable space: ${space}"
+
+
+			 	# Check external disk space, inform via email if small
+				space_backup=`df -k | sed '/ /! {N; s/\n//;}' | awk '$NF=="'${mount_backup}'" {print $4}'`
+				[ "x${space_backup}" == "x" ] && space_backup=0
+
+
+				if [ ${space_backup} -lt ${margin_external} ]
+				then
+
+					log "Low space on ${mount_backup}. Switching to new disk is recommended"
+					echo -e "Low space on ${mount_backup} (size ${space_backup})" | mail -s "Low space on external disk for Hackintosh" ${email_notice}
+
+				fi
+
+			 	# Stop backup
+			 	flag_backup=0
+
+				# Unblock the recon
+				echo "0" | cat > ${file_block_QSM}
+
+			fi
+
+		fi
+
+	else
+
+		flag_backup=1
+
+		# Unblock the recon (Just in case otherwise)
+		echo "0" | cat > ${file_block_QSM}
+
+	fi
+
+done

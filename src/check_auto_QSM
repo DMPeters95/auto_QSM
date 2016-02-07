@@ -1,0 +1,66 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+
+check_process()
+{
+	# $1: Check if $1 is running
+	# $2: [0 or 1], 0 means no logging
+	# $3: If necessary, shutdown all orphan $3 processes
+
+	# Get PID
+	file_PID_process="${folder_buffer}/PID_${1}"
+	PID_process=""
+	[ -e "${file_PID_process}" ] && PID_process=`cat ${file_PID_process}`
+
+	# Check process with PID
+	process=""
+	[ ! "x${PID_process}" == "x" ] && process=`ps -p ${PID_process} -f | grep ${1}`
+
+	# If process is empty, start it
+	if [ "x${process}" == "x" ]
+	then
+
+		# Check orphan $2 processes
+		process_2=""
+		[ ! "x${3}" == "x" ] && PID_process_2=`ps -u ${USER} -f | grep ${3} | awk '$3=="1" {print $2}'`
+		[ ! "x${PID_process_2}" == "x" ] && kill ${PID_process_2}
+
+		# Start $1
+		if [ $2 -eq 1 ]
+		then
+			daemonize -p ${file_PID_process} -a -o ${folder_buffer}/log_stdout_${1} \
+											    -e ${folder_buffer}/log_stdout_${1} \
+											    ${folder_src}/${1}
+		else
+			daemonize -p ${file_PID_process} ${folder_src}/${1}
+		fi
+	fi
+}
+
+
+# Check QSM recon script: qsmrecon_main
+check_process qsmrecon_main 1
+
+# Check dicom listening script: dicom_listen
+check_process dicom_listen 1 storescp_mod
+
+# Check auto backup script: auto_backup
+if [ ${flag_auto_backup} -eq 1 ]
+then
+	check_process auto_backup 1
+fi
+
+# Check log size checking script: check_log_size
+if [ ${flag_check_log_size} -eq 1 ]
+then
+	check_process check_log_size 0
+fi

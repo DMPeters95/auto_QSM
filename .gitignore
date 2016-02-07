@@ -1,0 +1,8 @@
+# Ignore all binary file (system dependent)
+bin/*
+
+# Ignore all buffer file (log, temp, etc.)
+buffer/*
+
+# Ignore all backup file
+*.bak

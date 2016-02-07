@@ -1,0 +1,25 @@
+#!/bin/bash
+
+kill_process()
+{
+	list_ps=`ps -u ${USER} -f`
+	PID_process=`echo "$list_ps" | grep -v grep | grep ${1} | awk '{ print $2 }'`
+	[ ! "x${PID_process}" == "x" ] && kill ${PID_process}
+}
+
+# Kill all processes for checking automatic QSM reconstruction
+
+# Kill QSM recon script
+kill_process qsmrecon_main
+
+# Kill Dicom listening script
+kill_process dicom_listen
+
+# Kill storescp script
+kill_process storescp_mod
+
+# Kill size checking script
+kill_process check_log_size
+
+# Kill archive backup script
+kill_process auto_backup

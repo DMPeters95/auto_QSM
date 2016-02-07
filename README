@@ -1,0 +1,83 @@
+# Requirement
+
+1. System: 
+This package has been tested on:
+	Ubuntu 14.04 LTS 64bit
+	Mac OS X 10.6.8
+
+2. Software:
+	daemonize
+	dcmtk 3.6.0
+
+3. Reconstruction script:
+This package uses program "medin" for DICOM --> QSM reconstruction
+However, it can be replaced by any command-line reconstruction script whose input/output format is DICOM image, with changes in auto_QSM/src/recon_script accordingly. 
+
+
+
+
+
+
+
+# Installation
+
+1. Unzip the package:
+$ tar -xvzf auto_QSM.tar.gz
+or get it from Github
+$ git clone https://github.com/leonhart217/auto_QSM.git
+
+2. cd to the root folder:
+$ cd auto_QSM
+
+3. Prepare binary files with auto_QSM/dep/bin_dep_[Your System Version].tar.gz:
+$ mkdir -p bin
+$ tar -C bin -xvzf dep/bin_dep_[Your System Version].tar.gz
+	
+[Note]: if your OS is differnet from those in Requirement, you may compile/install the required dependency binary file from source code:
+	average_binary:
+		Source code: auto_QSM/dep/src_dep.tar.gz/average_binary.c
+	storescp_mod:
+		Source code: auto_QSM/dep/src_dep.tar.gz/storescp_mod.cc
+		Compiled with dcmtk 3.6.0
+	gdcmdump:
+		Install GDCM 2.4: http://gdcm.sourceforge.net/wiki/index.php/Main_Page
+
+4. (Optional) Add auto_QSM/bin to $PATH in order to debug the package from command line
+For example for Ubuntu:
+$ echo "export PATH=\$PATH:$(pwd)/bin" >> ~/.profile
+$ . ~/.profile
+or for Mac OS X:
+$ echo "export PATH=\$PATH:$(pwd)/bin" >> ~/.bash_profile
+$ . ~/.bash_profile
+
+5. run
+$ ./install
+
+
+
+
+
+
+
+# Configuration
+
+1. System setting: auto_QSM/src/setup_config
+	disk_data_fix:
+		This is recommended to be manually set for the Filesystem of server's system drive ${disk_data}
+
+2. User setting: auto_QSM/etc/config_user
+	flag_auto_backup:
+		Automatically backup data from DICOM archive in system drive to external drive
+		Backup will happen when available space on ${disk_data} is below 80GB, and only happen at 3am ~ 5am, at most once per day.
+		Note: if this option is on, it is recommended to manually set the following in in auto_QSM/src/setup_config
+			mount_backup_fix: for the mount point of external drive
+
+3. Scanning list: auto_QSM/etc/scanner_list
+Each new scanner information should be added as a row with:
+	[manufactor brand]	[AETitle] [IP address] [port] [relay server name, if needed]
+
+4. If any configuration changes are made, restart the server by (Make sure the server is not currently running anything important):
+$ auto_QSM/src/kill_all; auto_QSM/src/start_all
+
+
+		
