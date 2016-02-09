@@ -1,3 +1,15 @@
+# Introduction
+
+This package sets up a DICOM image reconstruction server. It is able to:
+
+1. Listen to and handle incoming DICOM transfer
+2. Process the incoming DICOM image with customized reconsturction script
+3. Push the processed DICOM image back to the request peer. 
+4. Back up all the DICOM transfer history to a external storage device on a daily basis. 
+
+
+
+
 # Requirement
 
 1. System: 
@@ -12,9 +24,6 @@ This package has been tested on:
 3. Reconstruction script:
 This package uses program "medin" for DICOM --> QSM reconstruction
 However, it can be replaced by any command-line reconstruction script whose input/output format is DICOM image, with changes in auto_QSM/src/recon_script accordingly. 
-
-
-
 
 
 
@@ -52,8 +61,6 @@ $ . ~/.bash_profile
 
 5. run
 $ ./install
-
-
 
 
 
