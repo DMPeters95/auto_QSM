@@ -18,8 +18,8 @@ This package has been tested on:
 	Mac OS X 10.6.8
 
 2. Software:
-	daemonize
-	dcmtk 3.6.0
+	daemonize	(http://software.clapper.org/daemonize/index.html)
+	dcmtk 3.6.0	(http://dicom.offis.de/dcmtk.php.en)
 
 3. Reconstruction script:
 This package uses program "medin" for DICOM --> QSM reconstruction
