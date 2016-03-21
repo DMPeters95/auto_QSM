@@ -20,8 +20,8 @@ destination="${curdir}/../buffer/tmp"
 # Make new tmp folder
 folder_name="temp_"`date +"%Y%m%d_%H%M%S"`"_GE_${SCANNER}"	# Assume this is unique
 mkdir -p ${destination}/${folder_name}
-tar xvfj /home/sdc/${TARBALL} -C ${destination}/${folder_name}
-rm /home/sdc/${TARBALL}
+tar xvfj ${HOME}/${TARBALL} -C ${destination}/${folder_name}
+rm ${HOME}/${TARBALL}
 # Create info file
 file_name="file_info"
 time_stamp=`date +"date %Y-%m-%d time %H:%M"`
