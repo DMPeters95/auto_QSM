@@ -1,4 +1,11 @@
 #!/bin/bash
 
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
 # Start all processes for checking automatic QSM reconstruction
-${HOME}/auto_QSM/src/check_auto_QSM >> ${HOME}/auto_QSM/buffer/log_stdout_daemon 2>&1
+${curdir}/check_auto_QSM >> ${curdir}/../buffer/log_stdout_daemon 2>&1
