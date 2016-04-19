@@ -1,10 +1,18 @@
 #!/bin/bash
 
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
 kill_process()
 {
 	list_ps=`ps -u ${USER} -f`
 	PID_process=`echo "$list_ps" | grep -v grep | grep ${1} | awk '{ print $2 }'`
 	[ ! "x${PID_process}" == "x" ] && kill ${PID_process}
+	[ -a "${curdir}/../buffer/PID_${1}" ] && rm "${curdir}/../buffer/PID_${1}"
 }
 
 # Kill all processes for checking automatic QSM reconstruction
