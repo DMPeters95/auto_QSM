@@ -15,7 +15,9 @@ This package sets up a DICOM image reconstruction server. It is able to:
 1. System: 
 This package has been tested on:
 	Ubuntu 14.04 LTS 64bit
+	Ubuntu 15.10 64bit
 	Mac OS X 10.6.8
+	Mac OS X 10.10
 
 2. Software:
 	daemonize	(http://software.clapper.org/daemonize/index.html)
@@ -84,7 +86,39 @@ Each new scanner information should be added as a row with:
 	[manufactor brand]	[AETitle] [IP address] [port] [relay server name, if needed]
 
 4. If any configuration changes are made, restart the server by (Make sure the server is not currently running anything important):
-$ auto_QSM/src/kill_all; auto_QSM/src/start_all
+$ auto_QSM/src/restart_all
+
+
+
+
+
+# Frequent Q&A
+Q1. Do I need to compile the dcmtk and daemonize before installing this package?
+A1. Compilation and installation of dcmtk and daemonize are recommended. However, one can choose to use pre-compiled binaries for dcmtk which is available online:
+	dcmtk 3.6.0	(http://dicom.offis.de/dcmtk.php.en)
+For pre-compiled binary for daemonize, please contact the author.
+Note: when using pre-compiled binaries, please make sure the path to the binaries is added to $PATH in crontab
+
+Q2. How do I check if the package is properly functioning?
+A2. Simple check: in Ubuntu or Mac OS, run:
+$ ps -u ${USER} -f | grep auto_QSM
+Typical output has one running instance for each of "qsmrecon_main", "dicom_listen" and "check_log_size". It also has one or more instances for "storescp_mod". If flag_auto_backup is on, it should also has one instance of "auto_backup"
+Full check: more detailed information can be found in the log files:
+	buffer/log_stdout_qsmrecon_main:	
+		log of the recon script (E.g. check if one series is completely received; archive received DICOM; examine the DICOM header information)
+	buffer/log_stdout_dicom_listen:
+		log of DICOM transfer (E.g. check if a port has been used; check if a peer is able to be accessed)
+	buffer/log_QSM:
+		log of successfully reconstructed case(s)
+
+Q3. How do I un-install this package?
+A3.	1. Backup the data in your DICOM archive ($HOME/data by default)
+	2. Run (under auto_QSM)
+	$ cat crontab.bak | crontab -
+	$ src/kill_all
+	3. Remove the auto_QSM folder
+
+
 
 
 		
