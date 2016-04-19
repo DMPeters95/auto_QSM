@@ -1,0 +1,18 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+
+crontab -l 2>/dev/null > ${curdir}/../crontab.forrestart.bak
+echo "" | crontab -
+
+${curdir}/kill_all
+${curdir}/start_all
+
+cat ${curdir}/../crontab.forrestart.bak | crontab -
+
