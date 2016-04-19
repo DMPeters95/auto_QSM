@@ -118,6 +118,8 @@ A3.	1. Backup the data in your DICOM archive ($HOME/data by default)
 	$ src/kill_all
 	3. Remove the auto_QSM folder
 
+For further questions, please contact the author (leonhart217@gmail.com)
+
 
 
 
