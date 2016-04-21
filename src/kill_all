@@ -24,7 +24,7 @@ kill_process qsmrecon_main
 kill_process dicom_listen
 
 # Kill storescp script
-kill_process storescp_mod
+kill_process storescp
 
 # Kill size checking script
 kill_process check_log_size

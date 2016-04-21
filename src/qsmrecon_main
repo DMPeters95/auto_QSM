@@ -135,7 +135,7 @@ do
 			if [ ${flag_move_nongre} -eq 1 ] && [ ${brand_MF} == "SIEMENS" ]
 			then
 
-				files_move=`dcmdump +P 0018,0020 +P 0018,0024 +F +r +sd ${folder_pool}/${each_folder} 2> /dev/null | \
+				files_move=`${DCMDUMP} +P 0018,0020 +P 0018,0024 +F +r +sd ${folder_pool}/${each_folder} 2> /dev/null | \
 							grep -v file_info | \
 							sed -n '/^#/ {N; /\[GR\].*ScanningSequence/! {s/^.*\/\([^\n]*\n\)/\1/; P;};}'`
 				if [ "x${files_move}" == "x" ]

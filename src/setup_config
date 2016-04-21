@@ -24,6 +24,8 @@ folder_config="${folder_root}/etc"
 
 DCMDUMP="dcmdump"
 DCMODIFY="dcmodify"
+STORESCU="storescu"
+STORESCP="storescp_mod"
 GDCMDUMP="gdcmdump"
 DICOM_AVE="${folder_src}/dicom_ave"
 COMMAND_PUSH="${folder_src}/dcm2scanner"
