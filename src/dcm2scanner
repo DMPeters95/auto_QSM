@@ -10,7 +10,7 @@ then
 fi
 curdir=`dirname ${me}`
 
-source ${curdir}/../etc/config_user
+source ${curdir}/setup_config
 
 file_scanner_list="${curdir}/../etc/scanner_list"
 port_relay=24007
