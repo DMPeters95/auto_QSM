@@ -1,0 +1,113 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+kill_process()
+{
+	list_ps=`ps -u ${USER} -f`
+	# look for a regular process
+        PID_process=`pgrep ${1}`
+	# if not present, look for a bash script instead
+	if [ "x${PID_process}" == "x" ]
+	then
+		PID_process=`pgrep -fla ${1} | awk '/bash/{print $1}'`
+	fi
+	[ ! "x${PID_process}" == "x" ] && kill ${PID_process}
+	[ -a "${curdir}/../buffer/PID_${1}" ] && rm "${curdir}/../buffer/PID_${1}"
+}
+
+check_process()
+{
+	# $1: Check if $1 is running
+	# $2: [0 or 1], 0 means no logging
+	# $3: If necessary, shutdown all orphan $3 processes
+
+	# Get PID
+	file_PID_process="${folder_buffer}/PID_${1}"
+	PID_process=""
+	[ -e "${file_PID_process}" ] && PID_process=`cat ${file_PID_process}`
+
+	# Check process with PID
+	process=""
+	[ ! "x${PID_process}" == "x" ] && process=`ps -p ${PID_process} -f | grep ${1}`
+
+	# If process is empty, start it
+	if [ "x${process}" == "x" ]
+	then
+
+		# Check orphan $2 processes
+		process_2=""
+		[ ! "x${3}" == "x" ] && PID_process_2=`ps -u ${USER} -f | grep ${3} | awk '$3=="1" {print $2}'`
+		[ ! "x${PID_process_2}" == "x" ] && kill ${PID_process_2}
+
+		# Start $1
+		if [ $2 -eq 1 ]
+		then
+			daemonize -p ${file_PID_process} -a -o ${folder_buffer}/log_stdout_${1} \
+											    -e ${folder_buffer}/log_stdout_${1} \
+											    ${folder_src}/${1}
+		else
+			daemonize -p ${file_PID_process} ${folder_src}/${1}
+		fi
+	fi
+}
+
+allowed_cmds="start stop restart "
+#allowed_proc="qsmrecon_main dicom_listen storescp check_log_size auto_backup "
+allowed_proc="qsmrecon_main "
+
+usage()
+{
+	echo "${me} command name_of_process"  
+	echo "  command: one of"
+	for j in $allowed_cmds
+	do 
+		echo "      $j"
+	done
+	echo "  name_of_process : one of" 
+	for j in $allowed_proc
+	do 
+		echo "      $j"
+	done
+	exit $1
+}
+
+if [ "$1" == "" ] || [ "$2" == "" ]
+then
+	usage 1
+fi
+
+if [[ "${allowed_proc}" =~ "$2" ]]
+then
+	proc=$2
+else
+	usage 1
+fi
+
+case $1 in
+        "start")
+                echo "starting $proc"
+		check_process $proc 1
+                ;;
+        "stop")
+                echo "stopping $proc"
+                kill_process $proc
+                ;;
+        "restart")
+                echo "stopping $proc"
+                kill_process $proc
+                echo "starting $proc"
+                check_process $proc 1
+		;;
+        *)
+                usage 1
+                ;;
+esac
+

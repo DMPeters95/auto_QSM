@@ -1,0 +1,14 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/check_received_utils
+
+! [ "" == "$1" ] && show_info $1
+
+

@@ -14,11 +14,13 @@ folder_buffer="${folder_root}/buffer"
 folder_bin="${folder_root}/bin"
 folder_pool="${folder_buffer}/tmp"
 folder_trash="${folder_buffer}/trash"
+folder_dup="${folder_buffer}/dup"
 folder_config="${folder_root}/etc"
 [ ! -e ${folder_src} ] && mkdir -p ${folder_src}
 [ ! -e ${folder_buffer} ] && mkdir -p ${folder_buffer}
 [ ! -e ${folder_pool} ] && mkdir -p ${folder_pool}
 [ ! -e ${folder_trash} ] && mkdir -p ${folder_trash}
+[ ! -e ${folder_dup} ] && mkdir -p ${folder_dup}
 [ ! -e ${folder_tmpfile} ] && mkdir -p ${folder_tmpfile}
 [ ! -e ${folder_config} ] && mkdir -p ${folder_config}
 
@@ -64,7 +66,7 @@ mount_backup=${mount_backup_fix}
 
 
 limit_log_size="200000000" # 200MB
-margin_space="80000000" # Available space less than 80 GB
+margin_space="1300000000" # Available space less than 1300 GB
 margin_external="100000000"	# External space limit 100 GB for informing
 
 

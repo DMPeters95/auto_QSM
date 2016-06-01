@@ -6,3 +6,12 @@ buffer/*
 
 # Ignore all backup file
 *.bak
+
+# Ignore all swap file
+*.swp
+
+# Ignore pull tmp
+pulltmp
+
+# Don't sync config
+etc/*
