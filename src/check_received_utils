@@ -52,7 +52,7 @@ get_folder_info()
 		return 1
 	fi
         local AET_peer=`sed -n '1p' ${2}/${file_name_info}`
-	local time_stamp=`sed -n '2p' ${2}/${file_name_info}`
+	local time_stamp=`sed -n '4p' ${2}/${file_name_info}`
 	local brand_MF=$(get_brand ${AET_peer})
 
         local n_dicom=`ls ${2} | grep -v ${file_name_info} | wc -w`

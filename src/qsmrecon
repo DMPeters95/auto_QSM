@@ -26,6 +26,8 @@ rm ${HOME}/${TARBALL}
 file_name="file_info"
 time_stamp=`date +"date %Y-%m-%d time %H:%M"`
 echo ${SCANNER} > ${destination}/${folder_name}/${file_name}
+echo dummy >> ${destination}/${folder_name}/${file_name}
+echo dummy >> ${destination}/${folder_name}/${file_name}
 echo $time_stamp >> ${destination}/${folder_name}/${file_name}
 echo "Info file created"
 
