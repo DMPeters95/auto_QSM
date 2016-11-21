@@ -7,7 +7,7 @@ then
 fi
 curdir=`dirname ${me}`
 
-source ${curdir}/check_received_utils
+source ${curdir}/utils_check_received
 
 if [ "$1" == "--fix" ]
 then

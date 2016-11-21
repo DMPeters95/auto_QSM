@@ -1,0 +1,68 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/setup_config
+
+
+
+
+
+
+log()
+{
+	echo -n $(date +"[date %Y-%m-%d time %H:%M:%S]:")
+	echo "${@}"
+}
+
+
+get_folder_size()
+{
+	if [ $(uname) == "Darwin" ]
+	then
+		du ${3} -d ${2} ${1}
+	else
+		du ${3} --max-depth ${2} ${1}
+	fi
+}
+
+
+get_dcm_field()
+{
+	${DCMDUMP} +P ${2} ${1} 2>/dev/null | awk '{print $3}' | tr -d "[]"
+}
+
+get_gdcm_field()
+{
+	${GDCMDUMP} -C ${1} 2>/dev/null | grep $2 |  awk '{print $3}'
+}
+
+
+crop_file()
+{
+	local file_name=${1}
+	local line_num=${2}
+
+	local n_line=$(cat ${file_name} | wc -l)
+
+	# File too small
+	while [ ${n_line} -lt ${line_num} ]
+	do
+		echo "" | cat >> ${file_name}
+		n_line=$[${n_line}+1]
+	done	
+
+	# File too large
+	if [ ${n_line} -gt ${line_num} ]
+	then
+		sed -n -i "1,${line_num}p" ${file_name}
+	fi	
+}
+
+
+

@@ -7,7 +7,7 @@ then
 fi
 curdir=`dirname ${me}`
 
-source ${curdir}/setup_config
+source ${curdir}/utils_basic
 file_name_info="file_info"
 QSM_AE=MacServer
 

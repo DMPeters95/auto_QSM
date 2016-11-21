@@ -1,0 +1,126 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/utils_check_received
+
+# Input
+folder_agent=$1
+
+# Parse ${file_name_info} 
+#	L5: 	{""or"local"|"remote"}
+#			Indicate if working for local or remote job 
+#	L6:		job number at local server (remote job)
+#	L7: 	job number at origin caller (remote job)
+#	L8:	 	origin caller address (remote job)
+#	L9:	folder for job info saved at origin caller (remote job)
+#	L10:	folder for data saved at origin caller (remote job)
+type_job=`sed -n '5p' ${folder_agent}/${file_name_info}`
+if [ "${type_job}" == "remote" ]
+then
+	num_job=`sed -n '6p' ${folder_agent}/${file_name_info}`
+	num_job_remote=`sed -n '7p' ${folder_agent}/${file_name_info}`
+	addr_caller=`sed -n '8p' ${folder_agent}/${file_name_info}`
+	folder_jobpool_remote=`sed -n '9p' ${folder_agent}/${file_name_info}`
+	folder_data_remote=`sed -n '10p' ${folder_agent}/${file_name_info}`
+	file_log_copy_job=${folder_jobpool}/"log_copy_job${num_job}"
+	file_log_copy_job_remote=${folder_jobpool_remote}/"log_copy_job${num_job_remote}"
+fi
+
+
+# Duplicate stdout and stderr for remote job
+if [ "${type_job}" == "remote" ]
+then
+	exec 3>&1 4>&2
+	exec &> >(tee ${file_log_copy_job})
+fi
+
+
+
+# ================ Run MEDI ================ #
+
+# Parce DICOM info
+get_folder_info fldr ${folder_agent}
+get_dicom_info dicom ${fldr_file_dicom}
+
+# Remove info file
+# rm ${folder_pool}/${folder_agent}/${file_name_info} 
+rm ${folder_agent}/${file_name_info} 
+
+get_work_folder work_folder fldr dicom	
+echo Creating $work_folder
+mkdir -p ${work_folder}/DICOM
+
+# Fix bug with "Argument list too long"
+# find ${folder_pool}/${folder_agent}/ -type f -name '*' -exec mv {} ${work_folder}/DICOM/ \;
+find ${folder_agent}/ -type f -name '*' -exec mv {} ${work_folder}/DICOM/ \;
+# Clean up
+# rm -r ${folder_agent}			
+mkdir -p ${folder_pool}/../cleanup
+mv ${folder_agent} ${folder_pool}/../cleanup/
+
+olddir=${curdir}
+cd ${work_folder}
+	
+# QSM recon begin
+echo "Peer             = " ${fldr_AET_peer}			
+echo "StudyInstanceUID = " ${dicom_study_instance_uid}	
+echo "Exam Number      = " ${dicom_exam_no}			
+echo "Series Number    = " ${dicom_series_no}			
+
+# Run reconstruction script which takes input of DICOM/ and store output in SWI/ or QSM/)
+${RECON} ${fldr_brand_MF} DICOM
+
+# Send QSM back
+# Get command for pushing
+# ${COMMAND_PUSH} ${fldr_AET_peer} ${work_folder}/SWI/*
+${COMMAND_PUSH} ${fldr_AET_peer} ${work_folder}/SWI/* ${work_folder}/QSM/*
+
+cd ${olddir}
+
+# Log
+space=`df -kh | sed '/ /! {N; s/\n//;}' | awk '$1=="'${disk_data}'" {print $4}'`
+if [ "${fldr_brand_MF}" == "SIEMENS" ]
+then
+	log "QSM done for: peer ${fldr_AET_peer} uid ${dicom_study_instance_uid} series ${dicom_series_no}"
+	echo "<for_log_QSM>[${fldr_AET_peer}] uid ${dicom_study_instance_uid} series ${dicom_series_no} ${fldr_time_stamp}"
+	echo -e "uid ${dicom_study_instance_uid} \nSeries number ${dicom_series_no}\nSpace left ${space}" | mail -s "New QSM from ${fldr_AET_peer}" ${email_notice}
+else
+	log "QSM done for: peer ${fldr_AET_peer} exam ${dicom_exam_no} series ${dicom_series_no}"
+	echo "<for_log_QSM>[${fldr_AET_peer}] exam ${dicom_exam_no} series ${dicom_series_no} ${fldr_time_stamp}"
+	echo -e "Exam number ${dicom_exam_no} \nSeries number ${dicom_series_no}\nSpace left ${space}" | mail -s "New QSM from ${fldr_AET_peer}" ${email_notice}
+fi
+
+# ================ Finish MEDI ================ #
+
+
+
+
+# For remote job 
+if [ "${type_job}" == "remote" ]
+then
+	# Restore stdout and stderr
+	exec 1>&3 2>&4 3>&- 4>&-
+
+	# Transfer data
+	log "Begin transferring reconed data"
+	work_folder_remote=`printf "%s\n%s\n%s\n" "${folder_data_remote}" "${folder_data}" "${work_folder}" \
+						| sed -e 'N;N;s/^\(.*\)\n\(.*\)\n\2\(.*\)$/\1\3/'`
+	ssh ${addr_caller} "mkdir -p ${work_folder_remote}"
+	rsync --remove-source-files -a ${work_folder}/ ${addr_caller}:${work_folder_remote}/
+	find "${work_folder}" -type d -exec rmdir -p {} + 2>/dev/null
+	log "Finish transferring reconed data"
+
+
+	# Transfer log (stdout + QSM)
+	# echo "[${fldr_AET_peer}] exam ${dicom_exam_no} series ${dicom_series_no} ${fldr_time_stamp} (remote: ${AETitle_server})" | cat >> ${file_log_copy_job}
+	sed -i 's/^<for_log_QSM>.*$/&(remote: '${AETitle_server}')/' ${file_log_copy_job}
+	rsync --remove-source-files -a ${file_log_copy_job} ${addr_caller}:${file_log_copy_job_remote} 
+	# cat ${file_log_copy_job} | ssh ${addr_caller} "cat >> ${folder_jobpool_remote}/${file_log_job}"
+	# rm ${file_log_copy_job}
+fi

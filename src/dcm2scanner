@@ -12,9 +12,6 @@ curdir=`dirname ${me}`
 
 source ${curdir}/setup_config
 
-file_scanner_list="${curdir}/../etc/scanner_list"
-port_relay=24007
-
 AET_peer=$1
 IP_peer=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $3}'`
 port_peer=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $4}'`

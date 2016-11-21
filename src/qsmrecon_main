@@ -7,7 +7,7 @@ then
 fi
 curdir=`dirname ${me}`
 
-source ${curdir}/check_received_utils
+source ${curdir}/utils_check_received
 fix_half_series=1
 fix_non_gre=1
 fix_dones=1
@@ -15,22 +15,33 @@ fix_dups=1
 
 log Starting ${me}
 
+folder_list=
+folder_list_prev=("${folder_list}")
+flag_indicate_job_busy=0
 # Working Loop
 i=0
 while [ 1 ]
 do
+	# Update configuration
+	source ${curdir}/setup_config
+
+
+	# Clean ${folder_pool}
 	remove_nongre ${folder_pool}
 	remove_halfs ${folder_pool}
 	remove_dups_and_dones ${folder_pool}
 
+	# Refresh job logbook
+	logbook_refresh
+
+	# Get list for completed folder
 	get_completed_folder_list folder_list ${folder_pool}
-	
+	n_waitinglist=`echo ${folder_list} | wc -w`
+
 	for each_folder in $folder_list
 	do
-		get_folder_info fldr ${each_folder} || continue
-        	get_dicom_info dicom ${fldr_file_dicom}
 
-		log "New folder found: $(basename ${each_folder})"
+		# Make sure no blocking from backup func.
 
 		# Save condition flag 1 (working) to condition file
 		echo "1" | cat > ${file_condition_QSM}
@@ -42,79 +53,101 @@ do
 			break
 		fi
 
-		# ============ Receiving done ============ #
-		log "Receiving done!!"
 
-		# Remove info file
-		# rm ${folder_pool}/${each_folder}/${file_name_info} 
-		rm ${each_folder}/${file_name_info} 
+		# ============ QSM ready to go ============ #
+		# log "QSM ready!!"
 
-
-		# ================ Run MEDI ================ #
-		get_work_folder work_folder fldr dicom	
-		echo Creating $work_folder		
-		mkdir -p ${work_folder}/DICOM
-
-		# Fix bug with "Argument list too long"
-		# find ${folder_pool}/${each_folder}/ -type f -name '*' -exec mv {} ${work_folder}/DICOM/ \;
-		find ${each_folder}/ -type f -name '*' -exec mv {} ${work_folder}/DICOM/ \;
-		# Clean up
-		# rm -r ${each_folder}			
-		mkdir -p ${folder_pool}/../cleanup
-		mv ${each_folder} ${folder_pool}/../cleanup/
-
-		olddir=${curdir}
-		cd ${work_folder}
-			
-
-		# QSM recon begin
-		echo "Peer             = " ${fldr_AET_peer}
-		echo "StudyInstanceUID = " ${dicom_study_instance_uid}
-		echo "Exam Number      = " ${dicom_exam_no}			
-		echo "Series Number    = " ${dicom_series_no}						
-
-
-		# Run reconstruction script which takes input of DICOM/ and store output in SWI/ or QSM/)
-		${RECON} ${fldr_brand_MF} DICOM
-
-		# Send QSM back
-		# Get command for pushing
-		# ${COMMAND_PUSH} ${fldr_AET_peer} ${work_folder}/SWI/*
-		${COMMAND_PUSH} ${fldr_AET_peer} ${work_folder}/SWI/* ${work_folder}/QSM/*
-
-		cd ${olddir}
-
-
-
-		# Log
-		space=`df -kh | sed '/ /! {N; s/\n//;}' | awk '$1=="'${disk_data}'" {print $4}'`
-		if [ ${fldr_brand_MF} == "SIEMENS" ]
+		# Only prompt for newly found folder
+		if [[ ! " ${folder_list_prev[@]} " =~ " ${each_folder} " ]]
 		then
-			log "QSM done for: peer ${fldr_AET_peer} uid ${dicom_study_instance_uid} series ${dicom_series_no}"
-			echo "[${fldr_AET_peer}] uid ${dicom_study_instance_uid} series ${dicom_series_no} ${fldr_time_stamp}" | cat >> ${file_log_QSM}
-			echo -e "uid ${dicom_study_instance_uid} \nSeries number ${dicom_series_no}\nSpace left ${space}" | mail -s "New QSM from ${fldr_AET_peer}" ${email_notice}
-		else
-			log "QSM done for: peer ${fldr_AET_peer} exam ${dicom_exam_no} series ${dicom_series_no}"
-			echo "[${fldr_AET_peer}] exam ${dicom_exam_no} series ${dicom_series_no} ${fldr_time_stamp}" | cat >> ${file_log_QSM}
-			echo -e "Exam number ${dicom_exam_no} \nSeries number ${dicom_series_no}\nSpace left ${space}" | mail -s "New QSM from ${fldr_AET_peer}" ${email_notice}
+			log "New folder found: $(basename ${each_folder})"
 		fi
+
+		# # Determine if we need to assign a new job for this folder
+		# tmp=`logbook_check_job $(basename ${each_folder})`
+		# if [ ! "x${tmp}" == "x" ]
+		# then		
+		# 	# Another job is working on this
+		# 	# Ignore this folder
+		# 	log "A job is working on this."
+		# 	continue
+		# fi
+
+		# Determine if a job could be assigned
+		determine_job num_job type_job type_agent ${each_folder}
+		if [ "x${type_job}" == "x" ]
+		then
+			# No job could be created (all jobs/agents busy)
+			# Should go for next round (sleeping)
+			if [ ${flag_indicate_job_busy} -eq 0 ]
+			then
+				log "All jobs/agents busy"
+				flag_indicate_job_busy=1
+			fi
+
+			# Wait a moment
+			sleep 5
+			break
+
+		elif [ "${type_agent}" == "remote" ] && [ ${n_waitinglist} -lt ${n_min_waitinglist} ]
+		then
+			# No job (remote agent) should be created when waiting list is shorter than ${n_min_waitinglist}
+
+			# Even if not all jobs are busy
+			flag_indicate_job_busy=0
+
+			# Wait a moment
+			sleep 5
+			break
+
+		else
+			# A job could be created
+			flag_indicate_job_busy=0
+
+			# Decrease waitling list
+			n_waitinglist=$[${n_waitinglist} - 1]
+		fi
+
+		# Assign new job
+		logbook_add_job ${num_job} ${type_job} ${type_agent} $(basename ${each_folder})
+		log "Job ${num_job} (${type_job}:${type_agent}) is assigned"
+
+		# ${ASSIGN_JOB} ${each_folder} ${type_job} ${num_job}
+		# screen -dm ${ASSIGN_JOB} ${num_job} ${type_job} ${type_agent} ${each_folder}
+		${ASSIGN_JOB} ${num_job} ${type_job} ${type_agent} ${each_folder} &
+
+		# Wait a moment
+		sleep 5
 			
 	done
 
-	# Save condition flag 0 (idle) to condition file
-	echo "0" | cat > ${file_condition_QSM}		
+	# Write the folder list
+	folder_list_prev=("${folder_list}")
+
+	# It could only come here when:
+	#	1) no folders waiting
+	# or
+	#	2) all jobs busy
 
 	if [ "x" = "x${folder_list}" ]
 	then
+		# No folders waiting
+
+		# Save condition flag 0 (idle) to condition file
+		echo "0" | cat > ${file_condition_QSM}		
+
 		#echo "Empty folder list. Sleeping"
 		sleep ${period_recon}
 		i=$[$i + 1]
-		if [ $i -ge ${period_recon} ]
+		if [ $i -ge 60 ]
 		then
 			log "Idle"
 			i=0
 		fi
 	else
+		# All jobs busy
+
+		# Just go to the next round
 		i=0
 	fi
 

@@ -7,7 +7,7 @@ then
 fi
 curdir=`dirname ${me}`
 
-source ${curdir}/check_received_utils
+source ${curdir}/utils_check_received
 fix_half_series=1
 fix_non_gre=1
 fix_dones=1

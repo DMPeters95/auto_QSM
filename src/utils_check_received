@@ -7,13 +7,21 @@ then
 fi
 curdir=`dirname ${me}`
 
-source ${curdir}/setup_config
-file_name_info="file_info"
+# source ${curdir}/setup_config
+# source ${curdir}/utils_basic
+source ${curdir}/utils_job
+
+
 fix_half_series=0
 fix_non_gre=0
 fix_dups=0
 fix_dones=0
 fix_incompletes=0
+
+
+
+
+
 
 # Check the brand of the scanner (Default: GE)
 get_brand()
@@ -130,11 +138,21 @@ get_folder_info()
 get_folder_list()
 {
 	local flist=$(find ${2} -name ${file_name_info} -exec dirname {} \;)
-	if [ "${flist}" == "" ]
+	local each_folder=
+	local exjflist=
+
+	# Exclude those in job
+	for each_folder in ${flist}
+	do
+		local tmp=`logbook_check_job $(basename ${each_folder})`
+		[ "x${tmp}" == "x" ] && exjflist="${exjflist}${each_folder} "
+	done
+
+	if [ "${exjflist}" == "" ]
 	then
 		eval ${1}=
 	else
-		eval ${1}=\"$(ls -dtr ${flist})\"
+		eval ${1}=\"$(ls -dtr ${exjflist})\"
 	fi
 }
 
@@ -202,6 +220,16 @@ remove_nongre()
 		move_nongre_from_folder fol
 	done
 }
+
+# remove_nongre_each()
+# {
+# 	local each_folder=$1
+# 	# echo "remove_nongre : $each_folder"
+# 	local fol
+# 	get_folder_info fol ${each_folder} || return 1
+# 	move_nongre_from_folder fol
+# 	return 0
+# }
 
 remove_halfs()
 {
@@ -365,9 +393,14 @@ get_completed_folder_list()
 	local flist=$(find ${2} -name ${file_name_info} -exec dirname {} \;)
 	for j in $flist
 	do
-		get_folder_info f $j || continue
-		[ "1" == "$f_iscomplete" ] && cflist="${cflist}${j} "
+		local tmp=`logbook_check_job $(basename ${j})`
+		if [ "x${tmp}" == "x" ]
+		then
+			get_folder_info f $j || continue
+			[ "1" == "$f_iscomplete" ] && cflist="${cflist}${j} "			
+		fi
 	done
+
 	if [ "${cflist}" == "" ]
 	then
 		eval ${1}=
