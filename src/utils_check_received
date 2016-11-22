@@ -302,8 +302,9 @@ remove_dups_and_dones()
 	for i in $folder_list
 	do
 		get_folder_info folder ${i} || continue
+		get_job_info jb ${i} || continue
 		get_dicom_info dicom ${folder_file_dicom}
-        	get_work_folder work_folder folder dicom
+    	get_work_folder work_folder folder dicom
 		idir=$(basename $i)
 		if [ -e ${work_folder}/DICOM ] 
 		then
@@ -312,7 +313,13 @@ remove_dups_and_dones()
 			then
 				if [ -e ${i} ]
 				then
-				 	mv -v ${i} ${folder_dup}/
+					if [ "${jb_type}" == "remote" ]
+					then
+						# for remote job, inform the job finishing
+						log "Informed caller the job is done."
+						echo "Finishing::remote" | ssh ${jb_addr_caller} "cat > ${jb_file_status_remote}"
+					fi
+			 		mv -v ${i} ${folder_dup}/
 				fi
 			fi
 		fi
@@ -326,6 +333,12 @@ remove_dups_and_dones()
 				then
 					if [ -e ${i} ]
 					then
+						if [ "${jb_type}" == "remote" ]
+						then
+							# for remote job, inform the job finishing
+							log "Informed caller the job is duplicate."
+							echo "Finishing::remote" | ssh ${jb_addr_caller} "cat > ${jb_file_status_remote}"
+						fi
 				 		mv -v ${i} ${folder_dup}/
 					fi
 				fi

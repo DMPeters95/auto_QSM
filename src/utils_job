@@ -149,3 +149,37 @@ logbook_refresh()
 		fi
 	done		
 }
+
+
+get_job_info()
+{
+        eval ${1}_type=
+        eval ${1}_num=
+        eval ${1}_num_remote=
+        eval ${1}_addr_caller=
+        eval ${1}_folder_jobpool_remote=
+		eval ${1}_folder_data_remote=
+		eval ${1}_file_status_remote=
+
+	        # $1: dicom folder
+		if ! [ -e ${2}/${file_name_info} ]
+		then
+			return 1
+		fi
+
+		local type_job=`sed -n '5p' ${2}/${file_name_info}`
+        local num_job=`sed -n '6p' ${2}/${file_name_info}`
+        local num_job_remote=`sed -n '7p' ${2}/${file_name_info}`
+        local addr_caller=`sed -n '8p' ${2}/${file_name_info}`
+        local folder_jobpool_remote=`sed -n '9p' ${2}/${file_name_info}`
+        local folder_data_remote=`sed -n '10p' ${2}/${file_name_info}`
+        local file_status_job_remote=${folder_jobpool_remote}/"status_job${num_job_remote}"
+
+        eval ${1}_type=${type_job}
+        eval ${1}_num=${num_job}
+        eval ${1}_num_remote=${num_job_remote}
+        eval ${1}_addr_caller=${addr_caller}
+        eval ${1}_folder_jobpool_remote=${folder_jobpool_remote}
+        eval ${1}_folder_data_remote=${folder_data_remote}
+        eval ${1}_file_status_remote=${file_status_job_remote}
+}

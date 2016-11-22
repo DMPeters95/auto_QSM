@@ -82,10 +82,10 @@ then
 		# Agent finishes at called side
 		# Handle log (stdout and QSM)
 		log "Job "${num_job}": Output:"
-	 	cat ${file_log_copy_job}
+	 	cat ${file_log_copy_job} 2>/dev/null
 
 		# Delete temp log
-		rm ${file_log_copy_job}
+		rm ${file_log_copy_job} 2>/dev/null
 	else
 		# Remote address invalid
 		log "No remote agent responds."
