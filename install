@@ -14,6 +14,18 @@ chmod +x ${folder_root}/src/*
 
 
 # User configuration
+if [ ! -f "${folder_root}/etc/config_user" ]
+then
+	if [ -f "${folder_root}/etc/config_user.example" ]
+	then
+		cp ${folder_root}/etc/config_user.example ${folder_root}/etc/config_user
+		cp ${folder_root}/etc/scanner_list.example ${folder_root}/etc/scanner_list
+	else
+		echo "No example config file. Something is not right. Exiting..."
+		return 1
+	fi
+fi
+
 if [ $(uname) == "Darwin" ]
 then
 	opt_sed="-i \"\""
