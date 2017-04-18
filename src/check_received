@@ -1,0 +1,49 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/utils_check_received
+
+if [ "$1" == "--fix" ]
+then
+	fix_half_series=1
+	fix_non_gre=1
+	fix_dones=1
+	fix_dups=1
+	fix_incompletes=1
+fi 
+
+#folder_loc=${folder_pool}/../tmpdup
+#folder_loc=${folder_pool}/../trash2
+#folder_loc=${folder_pool}/../trash
+folder_loc=${folder_pool}
+	
+remove_nongre ${folder_loc}
+remove_halfs ${folder_loc}
+remove_dups_and_dones ${folder_loc}
+remove_incompletes ${folder_loc}
+
+get_folder_list folder_list ${folder_loc}
+
+for i in $folder_list
+do
+	get_folder_info folder ${i} || continue
+	if [ "0" == "$folder_iscomplete" ]
+	then
+		show_info ${i}
+        fi
+done
+
+echo COMPLETE:
+get_completed_folder_list folde_list ${folder_loc}
+
+for i in $folde_list
+do
+	show_info ${i}
+done
+

@@ -1,0 +1,101 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/utils_basic
+file_name_info="file_info"
+QSM_AE=MacServer
+
+
+if [ "$1" == "" ]
+then
+	echo "${me} <dir>"
+	echo "  Pulls all series found in <dir> to the QSM recon server"
+	echo "  Used for incomplete series"
+	echo "  Each series will arrive separately, this relies on" 
+	echo "  the "remove_halfs" function to join them"
+fi
+
+if ! [ -e "$1" ]
+then
+	echo File $1 not found. Exiting...
+	exit 1
+fi
+
+file_scanner_list="${curdir}/../etc/scanner_list"
+
+
+dcmfile=`find ${1}/ -type f | grep -v ${file_name_info} | head -n 1`
+if [ "$dcmfile" == "" ]
+then
+	echo No dicoms found. Exiting
+	exit 1
+fi
+
+AET_peer=`get_dcm_field $dcmfile 0002,0016`
+IP_peer=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $3}'`
+port_peer=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${AET_peer}'" {print $4}'`
+
+StudyDate=`get_dcm_field $dcmfile 0008,0020`
+StudyInstanceUID=`get_dcm_field $dcmfile 0020,000d`
+PatientID=`get_dcm_field $dcmfile 0010,0020`
+SOPInstanceUID=
+
+pulltmpdir=${folder_buffer}/pulltmp
+mkdir -p ${pulltmpdir}
+log_pull=${folder_buffer}/log_stdout_dcmpull
+
+echo >> ${log_pull}
+log ${1} >> ${log_pull} 
+echo "StudyInstanceUID = ${StudyInstanceUID}" >> ${log_pull}
+echo "AET_peer         = ${AET_peer}" >> ${log_pull}
+
+#SeriesInstanceUID=`get_dcm_field $dcmfile 0020,000e` 
+seruids=`${DCMDUMP} +sd +P 0020,000e $1 2>/dev/null | sort | uniq | cut -d " " -f 3`
+seruids=${seruids//[/}
+seruids=${seruids//]/}
+patqrys=
+for SeriesInstanceUID in ${seruids}
+do
+	qry=${pulltmpdir}/patqry.${SeriesInstanceUID}
+	if [ -f ${qry}.dcm ]
+	then
+		echo ${qry}.dcm already exists. Not pulling...
+		continue
+	fi
+	cat <<EOF > ${qry}.txt
+# query patient names and IDs
+(0008,0052) CS [SERIES]                # QueryRetrieveLevel
+(0008,0020) DA [${StudyDate}]          # StudyDate
+(0010,0020) LO [${PatientID}]          # PatientID
+(0020,000d) UI [${StudyInstanceUID}]   #StudyInstanceUID 
+(0020,000e) UI [${SeriesInstanceUID}]
+EOF
+	dump2dcm ${qry}.txt ${qry}.dcm >> ${log_pull} 2>&1
+	patqrys="${patqrys}${qry}.dcm "
+done
+
+if [ "${patqrys}" == "" ]
+then
+	echo No series pulled. Exiting...
+	exit 1
+else
+	findscu -P ${IP_peer} ${port_peer} -aec ${AET_peer} ${patqrys} >> ${log_pull} 2>&1
+	if [ $? -eq 0 ]
+	then
+		echo movescu -v --move ${QSM_AE} ${IP_peer} ${port_peer} -aec ${AET_peer} -aet ${QSM_AE} ${patqrys}
+		if [ $? -eq 0 ]
+		then
+			echo mv ${1} ${folder_trash}/ 
+		fi
+	else
+		echo findscu return with error
+		exit 1
+	fi
+fi
+

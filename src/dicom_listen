@@ -13,6 +13,8 @@ source ${curdir}/setup_config
 
 
 #
-command_on_reception="'${folder_src}/store_info #p #f #a #c #r'"
+# command_on_reception="'${folder_src}/store_info #p #f #a #c #r'"
+command_on_sostudy="'${folder_src}/store_info #p #a #a #c #r'"
 
-eval ${STORESCP} --fork -v -aet ${AETitle_server} -od ${folder_pool} -ss temp -xcr ${command_on_reception} ${port_server} 
+# eval ${STORESCP} --fork -v -aet ${AETitle_server} -od ${folder_pool} -ss temp -xcr ${command_on_reception} ${port_server} 
+eval ${STORESCP} --fork -v -aet ${AETitle_server} -od ${folder_pool} -ss temp -xcss ${command_on_sostudy} ${port_server} 

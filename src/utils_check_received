@@ -1,0 +1,436 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+# source ${curdir}/setup_config
+# source ${curdir}/utils_basic
+source ${curdir}/utils_job
+
+
+fix_half_series=0
+fix_non_gre=0
+fix_dups=0
+fix_dones=0
+fix_incompletes=0
+
+
+
+
+
+
+# Check the brand of the scanner (Default: GE)
+get_brand()
+{
+  brand=`sed -n '1! p' ${file_scanner_list} | awk '$2=="'${1}'" {print $1}' | head -n 1`
+  [ "x${brand}" == "x" ] && brand="GE"
+  echo ${brand}
+}
+
+get_dicom_info()
+{
+	eval ${1}_patid=`get_dcm_field $2 0010,0020`
+	eval ${1}_exam_no=`get_dcm_field $2 0020,0010`
+        eval ${1}_series_no=`get_dcm_field $2 0020,0011`
+        eval ${1}_study_instance_uid=`get_dcm_field $2 0020,000d`
+	eval ${1}_image_type=`get_dcm_field $2 0008,0008 | sed 's/\\\/:/g'`
+}
+
+get_folder_info()
+{
+        eval ${1}_AET_peer=
+        eval ${1}_time_stamp=
+        eval ${1}_brand_MF=
+        eval ${1}_file_dicom=
+        eval ${1}_n_rcvd=
+	eval ${1}_n_xpctd=
+	eval ${1}_numofecho=
+	eval ${1}_locs=
+	eval ${1}_zip=
+	eval ${1}_iscomplete=
+	eval ${1}_name=
+        
+        # $1: dicom folder
+	if ! [ -e ${2}/${file_name_info} ]
+	then
+		return 1
+	fi
+        local AET_peer=`sed -n '1p' ${2}/${file_name_info}`
+	local time_stamp=`sed -n '4p' ${2}/${file_name_info}`
+	local brand_MF=$(get_brand ${AET_peer})
+
+        local n_dicom=`ls ${2} | grep -v ${file_name_info} | wc -w`
+	local file_dicom=
+	local numofecho=
+	local Locs=
+	local zip=
+	local n_expectfile=
+
+        if [ ${n_dicom} -ne 0 ]
+        then
+                file_dicom=`find ${2} | sed -n '1!p' | grep -v ${file_name_info} | head -n 1`
+
+                case ${brand_MF} in
+                        "SIEMENS" )
+                                numofecho=`get_gdcm_field ${file_dicom} lContrasts`
+                                Locs=`get_gdcm_field ${file_dicom} sKSpace.lImagesPerSlab`
+                                [ "x${numofecho}" == "x" ] && numofecho="0"
+                                [ "x${Locs}" == "x" ] && Locs="0"
+				eval ${1}_numofecho=${numofecho}
+				eval ${1}_locs=${Locs}
+				eval ${1}_zip="1"
+
+                                #file_name_dicom=`basename ${file_dicom}`
+                                #echo "file_name_dicom = " {file_name_dicom}
+                                #echo "numofecho       = " $numofecho
+                                #echo "Locs            = " $Locs
+                                n_expectfile=$[ $numofecho * $Locs * 2 ]
+                                ;;
+
+                        * )
+                                numofecho=`get_dcm_field ${file_dicom} 0019,107e`
+                                Locs=`get_dcm_field ${file_dicom} 0021,104f`
+                                local SliceThick=`get_dcm_field ${file_dicom} 0018,0050`
+                                local SliceSpacing=`get_dcm_field ${file_dicom} 0018,0088`
+                                zip=`echo "${SliceThick}/${SliceSpacing}" | bc`
+                                [ "x${numofecho}" == "x" ] && numofecho="0"
+                                [ "x${Locs}" == "x" ] && Locs="0"
+                                [ "x${zip}" == "x" ] && zip="0"
+                                
+                                eval ${1}_numofecho=${numofecho}
+                                eval ${1}_locs=${Locs}
+                                eval ${1}_zip=${zip}
+                                #file_name_dicom=`basename ${file_dicom}`
+                                #echo "file_name_dicom = " {file_name_dicom}
+                                #echo "numofecho       = " $numofecho
+                                #echo "Locs            = " $Locs
+                                #echo "zip             = " $zip
+
+                                n_expectfile=$[ $numofecho * $Locs *  $zip * 3 ]
+                                ;;
+
+                esac
+
+                #echo "Expected: ${n_expectfile}, Received: ${n_dicom}"
+                if [ ${n_dicom} -ne ${n_expectfile} ]
+                then
+                        eval ${1}_iscomplete=0
+                else
+                        eval ${1}_iscomplete=1
+                fi
+        fi
+
+	eval ${1}_name=${2}
+        eval ${1}_AET_peer=${AET_peer}
+        eval ${1}_time_stamp=\"${time_stamp}\"
+        eval ${1}_brand_MF=${brand_MF}
+        eval ${1}_file_dicom=${file_dicom}
+        eval ${1}_n_rcvd=${n_dicom}
+	eval ${1}_n_xpctd=${n_expectfile}
+
+        return 0
+}
+
+get_folder_list()
+{
+	local flist=$(find ${2} -name ${file_name_info} -exec dirname {} \;)
+	local each_folder=
+	local exjflist=
+
+	# Exclude those in job
+	for each_folder in ${flist}
+	do
+		local tmp=`logbook_check_job $(basename ${each_folder})`
+		[ "x${tmp}" == "x" ] && exjflist="${exjflist}${each_folder} "
+	done
+
+	if [ "${exjflist}" == "" ]
+	then
+		eval ${1}=
+	else
+		eval ${1}=\"$(ls -dtr ${exjflist})\"
+	fi
+}
+
+get_work_folder()
+{
+	local fname=
+	if [ "$(eval echo \${${2}_brand_MF})" == "SIEMENS" ]
+	then
+		fname=${folder_data}/$(eval echo \${${2}_AET_peer})/$(eval echo \${${3}_study_instance_uid})/$(eval echo \${${3}_series_no})
+	else
+		fname=${folder_data}/$(eval echo \${${2}_AET_peer})/$(eval echo \${${3}_exam_no})/$(eval echo \${${3}_series_no})
+	fi
+	eval ${1}=${fname}
+}
+
+
+move_nongre_from_folder()
+{
+	# For SIEMENS
+	# Sometimes non-gre scans go into the same folder as gre scans
+	# Need to move non-gre scans elsewhere
+	if [ ${flag_move_nongre} -eq 1 ] && [ "$(eval echo \${${1}_brand_MF})" == "SIEMENS" ]
+	then
+		local fname=$(eval echo \${${1}_name})
+		#echo checking for non gre files in ${fname}
+		local files_move=`${DCMDUMP} +P 0018,0020 +P 0018,0024 +F +r +sd ${fname} 2> /dev/null | \
+							grep -v ${file_name_info} | \
+							sed -n '/^#/ {N; /\[GR\].*ScanningSequence/! {s/^.*\/\([^\n]*\n\)/\1/; P;};}'`
+		local n_files_move
+		if [ "x${files_move}" == "x" ]
+		then
+			n_files_move=0
+		else
+			n_files_move=`echo "${files_move}" | wc -l`
+		fi
+		if [ ${n_files_move} -ne 0 ]
+		then
+			local trashdir=${folder_trash}/$(basename ${fname})
+			if [ "${fix_non_gre}" == "1" ]
+			then
+				mkdir -p ${trashdir}
+				for nongrefile in ${files_move}
+				do
+					mv ${fname}/${nongrefile} ${trashdir}/
+				done
+				cp -f ${fname}/${file_name_info} ${trashdir}/
+				log "${n_files_move} non-GRE dicoms has been moved to ${trashdir}"
+			else
+				log "${n_files_move} non-GRE dicoms would have been moved to ${trashdir}"
+			fi
+		fi
+	fi
+
+}
+
+remove_nongre()
+{
+	get_folder_list folder_list $1
+	local i=
+	for i in $folder_list
+	do
+		# echo "remove_nongre : $i"
+		local fol
+		get_folder_info fol ${i} || continue
+		move_nongre_from_folder fol
+	done
+}
+
+# remove_nongre_each()
+# {
+# 	local each_folder=$1
+# 	# echo "remove_nongre : $each_folder"
+# 	local fol
+# 	get_folder_info fol ${each_folder} || return 1
+# 	move_nongre_from_folder fol
+# 	return 0
+# }
+
+remove_halfs()
+{
+	# half_list contains Siemens folder with exactly half of 
+	# the number of expected images
+	local half_list=
+	local i=
+	get_folder_list folder_list $1
+	for i in $folder_list
+	do
+		get_folder_info folder ${i} || continue
+		get_dicom_info dicom ${folder_file_dicom}
+        	local idir=$(basename $i)
+		if [ "0" == "$folder_iscomplete" ]
+		then
+			if [ "${folder_brand_MF}" == "SIEMENS" ]
+			then
+				local n_rsvd_2=$[ $folder_n_rcvd * 2 ]
+				if [ "$n_rsvd_2" == "$folder_n_xpctd" ]
+				then
+					half_list="${half_list}${idir}:"
+				fi
+			fi
+        	fi
+	done
+
+	while [[ ! -z $half_list ]]
+	do
+		local idir=$(echo $half_list | cut -d":" -f1)
+		get_folder_info folder ${1}/${idir}
+        	get_dicom_info dicom ${folder_file_dicom}
+		half_list=${half_list/${idir}:/}
+		remaining_half_list=$half_list
+		while [[ ! -z $remaining_half_list ]]
+		do
+			local i2dir=$(echo $remaining_half_list | cut -d":" -f1)
+			get_folder_info folder2 ${1}/${i2dir}
+        		get_dicom_info dicom2 ${folder2_file_dicom}
+			local series_diff=$(echo $[ $dicom_series_no - $dicom2_series_no ])
+			series_diff=${series_diff/-/}
+			if [[    "$dicom_patid" == "$dicom2_patid"    \
+                     		&& "$folder_n_rcvd" == "$folder2_n_rcvd" \
+		     		&& "$series_diff" == "1" ]]
+			then
+				if [ "1" == "$fix_half_series" ]
+				then
+					local idirnew=${idir}_copy
+					rsync -a ${1}/${i2dir}/ ${1}/${idirnew}/ 
+					rsync -a ${1}/${idir}/ ${1}/${idirnew}/
+					log "moved contents of ${idir} and ${i2dir} into ${idirnew}"
+					mv ${1}/${idir} ${1}/${i2dir} ${folder_trash}/
+				else
+					log "found match $i2dir for $idir"
+				fi
+				# remove the found match from the list
+				half_list=${half_list/${i2dir}:/}
+				# stop looking for a match now that one has been found
+				remaining_half_list=
+			fi
+			remaining_half_list=${remaining_half_list/${i2dir}:/}
+		done
+	done
+}
+
+remove_dups_and_dones()
+{
+	local content_list=
+	local i=
+	get_folder_list folder_list $1
+	for i in $folder_list
+	do
+		get_folder_info folder ${i} || continue
+		get_job_info jb ${i} || continue
+		get_dicom_info dicom ${folder_file_dicom}
+    	get_work_folder work_folder folder dicom
+		idir=$(basename $i)
+		if [ -e ${work_folder}/DICOM ] 
+		then
+			log "Removing ${idir}, already done" 
+			if [ "$fix_dones" == "1" ]
+			then
+				if [ -e ${i} ]
+				then
+					if [ "${jb_type}" == "remote" ]
+					then
+						# for remote job, inform the job finishing
+						log "Informed caller the job is done."
+						echo "Finishing::remote" | ssh ${jb_addr_caller} "cat > ${jb_file_status_remote}"
+					fi
+			 		mv -v ${i} ${folder_dup}/
+				fi
+			fi
+		fi
+		if [ "1" == "$folder_iscomplete" ]
+		then
+			content=${folder_AET_peer}:${dicom_study_instance_uid}:${dicom_patid}:${dicom_series_no}
+			if [[ "${content_list}" =~ "${content}" ]] 
+			then 
+				log "Removing ${idir}, already received" 
+				if [ "$fix_dups" == "1" ]
+				then
+					if [ -e ${i} ]
+					then
+						if [ "${jb_type}" == "remote" ]
+						then
+							# for remote job, inform the job finishing
+							log "Informed caller the job is duplicate."
+							echo "Finishing::remote" | ssh ${jb_addr_caller} "cat > ${jb_file_status_remote}"
+						fi
+				 		mv -v ${i} ${folder_dup}/
+					fi
+				fi
+			else
+				content_list="${content_list}${content} "
+			fi
+        	fi
+	done
+}
+
+seconds_since_last_mod()
+{
+	local timedir=
+	if [ -d ${1} ]
+	then
+		timedir=$(stat -c '%Z' ${1}/* | sort -n | tail -n 1)
+	else
+		timedir=$(stat -c '%Z' ${1} | sort -n | tail -n 1)
+	fi
+	local timenow=$(date +%s)
+	echo $[ ${timenow} - ${timedir} ]
+}
+
+remove_incompletes()
+{
+	local i=
+	get_folder_list folder_list $1
+	for i in $folder_list
+	do
+		get_folder_info folder ${i} || continue
+		get_dicom_info dicom ${folder_file_dicom}
+        	local idir=$(basename $i)
+		if [ "0" == "$folder_iscomplete" ]
+		then
+			if [ "${folder_brand_MF}" == "SIEMENS" ]
+			then
+				# half series are not handled here
+				local n_rsvd_2=$[ $folder_n_rcvd * 2 ]
+				if ! [ "$n_rsvd_2" == "$folder_n_xpctd" ]
+				then
+					echo "${idir} incomplete (received ${folder_n_rcvd}, expected ${folder_n_xpctd})" 
+					if [ $(seconds_since_last_mod ${i}) -gt 60 ]
+					then
+						#if [ $fix_incompletes -eq 1 ]
+						#then
+						#	${curdir}/dcmpull ${i}
+						#fi
+						${curdir}/dcmpull ${i}
+						#if [ $? -eq 0 ]
+						#then
+						#	echo dcmpull successfull
+						#fi
+					fi
+				fi
+			fi
+        	fi
+	done
+}
+
+get_completed_folder_list()
+{
+	local j=
+	local f=
+	local cflist=
+	local flist=$(find ${2} -name ${file_name_info} -exec dirname {} \;)
+	for j in $flist
+	do
+		local tmp=`logbook_check_job $(basename ${j})`
+		if [ "x${tmp}" == "x" ]
+		then
+			get_folder_info f $j || continue
+			[ "1" == "$f_iscomplete" ] && cflist="${cflist}${j} "			
+		fi
+	done
+
+	if [ "${cflist}" == "" ]
+	then
+		eval ${1}=
+	else
+		eval ${1}=\"$(ls -dtr ${cflist})\"
+	fi
+}
+
+show_info()
+{
+	get_folder_info folder ${1} || return
+        get_dicom_info dicom ${folder_file_dicom}
+        idir=$(basename ${1})
+	if [ "0" == "$folder_iscomplete" ]
+	then
+		echo "${idir} $folder_AET_peer incomplete (received:$folder_n_rcvd, expected $folder_n_xpctd, patid $dicom_patid series $dicom_series_no)"
+        else
+		echo "${idir} $folder_AET_peer patID $dicom_patid studyID $dicom_study_instance_uid series $dicom_series_no"
+	fi
+}

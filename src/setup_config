@@ -14,12 +14,16 @@ folder_buffer="${folder_root}/buffer"
 folder_bin="${folder_root}/bin"
 folder_pool="${folder_buffer}/tmp"
 folder_trash="${folder_buffer}/trash"
+folder_dup="${folder_buffer}/dup"
+folder_jobpool="${folder_buffer}/job"
 folder_config="${folder_root}/etc"
 [ ! -e ${folder_src} ] && mkdir -p ${folder_src}
 [ ! -e ${folder_buffer} ] && mkdir -p ${folder_buffer}
 [ ! -e ${folder_pool} ] && mkdir -p ${folder_pool}
 [ ! -e ${folder_trash} ] && mkdir -p ${folder_trash}
+[ ! -e ${folder_dup} ] && mkdir -p ${folder_dup}
 [ ! -e ${folder_tmpfile} ] && mkdir -p ${folder_tmpfile}
+[ ! -e ${folder_jobpool} ] && mkdir -p ${folder_jobpool}
 [ ! -e ${folder_config} ] && mkdir -p ${folder_config}
 
 DCMDUMP="dcmdump"
@@ -31,11 +35,16 @@ DICOM_AVE="${folder_src}/dicom_ave"
 COMMAND_PUSH="${folder_src}/dcm2scanner"
 AVERAGE_BIN="average_binary"
 RECON="${folder_src}/recon_script"
+ASSIGN_JOB="${folder_src}/qsmrecon_job"
+CALL_AGENT="${folder_src}/qsmrecon_agent"
 
 file_log_QSM="${folder_buffer}/log_QSM"
 file_condition_QSM="${folder_buffer}/condition_QSM"
 file_block_QSM="${folder_buffer}/block_qsmrecon"
 file_manual_switch_backup="${folder_buffer}/manual_switch_backup"
+file_job_logbook="${folder_jobpool}/file_job_logbook"
+
+file_name_info="file_info"
 
 email_notice="zhl2008@med.cornell.edu"
 
@@ -44,6 +53,7 @@ period_check_log_size=50
 period_auto_backup=100
 
 file_scanner_list=${folder_config}/scanner_list
+port_relay=24007
 
 # Leave blank as default
 disk_data_fix="/dev/sda1"
@@ -64,39 +74,24 @@ mount_backup=${mount_backup_fix}
 
 
 limit_log_size="200000000" # 200MB
-margin_space="80000000" # Available space less than 80 GB
+margin_space="1600000000" # Available space less than 1600 GB
 margin_external="100000000"	# External space limit 100 GB for informing
 
+# Job setting
+# limit_job_local=1
+# limit_job_remote=0
+# limit_job=$[${limit_job_local}+${limit_job_remote}]
+# limit_job=2
+# Agent setting
+limit_agent_local=1
+limit_agent_remote=1
+limit_agent=$[${limit_agent_local}+${limit_agent_remote}]
+limit_job=${limit_agent}
+n_min_waitinglist=2
 
+# hostname
 
 # file_log_stdout_qsmrecon="${folder_buffer}/log_stdout_qsmrecon"
 # file_log_stdout_dicom_listen="${folder_buffer}/log_stdout_dicom_listen"
 # file_log_stdout_backup="${folder_buffer}/log_stdout_backup"
 
-
-
-log()
-{
-	echo -n $(date +"[date %Y-%m-%d time %H:%M:%S]:")
-	echo "${@}"
-}
-
-get_folder_size()
-{
-	if [ $(uname) == "Darwin" ]
-	then
-		du ${3} -d ${2} ${1}
-	else
-		du ${3} --max-depth ${2} ${1}
-	fi
-}
-
-get_dcm_field()
-{
-	${DCMDUMP} +P ${2} ${1} 2>/dev/null | awk '{print $3}' | tr -d "[]"
-}
-
-get_gdcm_field()
-{
-	${GDCMDUMP} -C ${1} 2>/dev/null | grep $2 |  awk '{print $3}'
-}

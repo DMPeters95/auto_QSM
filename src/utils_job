@@ -1,0 +1,185 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+# source ${curdir}/setup_config
+source ${curdir}/utils_basic
+
+
+
+
+
+get_my_addr()
+{
+	eval ${1}=$(whoami)@$(hostname)
+}
+
+
+get_remote_addr()
+{
+	eval ${1}=${addr_remote_def}
+}
+
+
+check_addr()
+{
+	ssh -q ${1} exit
+	echo $?
+}
+
+
+get_remote_folder_pool()
+{
+	# Assume remote has the same folder setup
+	eval ${1}=${folder_pool}
+}
+
+
+determine_job()
+{
+	# Input:
+	# $4: Folder name
+	# Output:
+	# $1: Job number
+	# $2: Job type: {"local"|"remote"}
+	# $3: Agent type: {"local"|"remote"}
+
+	local num_j=
+	local type_j=
+	local type_a=
+
+	# Determine agent type
+	local nums_job_curr=`ls ${folder_jobpool}/status_job* 2>/dev/null | sed -n 's/.*\/status_job\(.*\)/\1/p'`
+	local types_agent_curr=`cat ${folder_jobpool}/status_job* 2>/dev/null | sed -n 's/.*:\(.*\)/\1/p'`
+	local n_agent_local_curr=`echo "${types_agent_curr}" | grep "local" | wc -l`
+	local n_agent_remote_curr=`echo "${types_agent_curr}" | grep "remote" | wc -l`
+	local n_agent_curr=$[${n_agent_local_curr} + ${n_agent_remote_curr}]
+
+	if [ ${n_agent_curr} -lt ${limit_job} ]
+	then
+		if [ ${n_agent_local_curr} -lt ${limit_agent_local} ] 
+		then
+			type_a="local"
+		elif [ ${n_agent_remote_curr} -lt ${limit_agent_remote} ] 
+		then
+			type_a="remote"
+		fi
+	fi
+
+	if [ ! "x${type_a}" == "x" ]
+	then
+		# An agent could be called
+
+		# Determine job type
+		local tmp
+		tmp=`sed -n '5p' ${4}/${file_name_info} 2>/dev/null`
+		[ "${tmp}" == "remote" ] && type_j="remote" || type_j="local"
+
+		# Determine job number
+		local arr_nums_job_curr=(${nums_job_curr})
+		local i=
+		for (( i=1 ; i<=${limit_job} ; i++ ))
+		do
+			if [[ ! " ${arr_nums_job_curr[@]} " =~ " ${i} " ]]
+			then
+				num_j=${i}
+				break
+			fi    		
+		done		
+	fi
+
+	eval ${1}=${num_j}
+	eval ${2}=${type_j}
+	eval ${3}=${type_a}
+}
+
+
+logbook_add_job()
+{
+	# $1: Job number
+	# $2: Job type: {"local"|"remote"}
+	# $3: Agent type: {"local"|"remote"}
+	# $4: Folder name
+	printf "job %-5s %-10s %-10s %s" ${1} ${2} ${3} ${4} | cat >> ${file_job_logbook}
+	sort -n -k 2 -o ${file_job_logbook} ${file_job_logbook}
+}
+
+logbook_remove_job()
+{
+	# $1: Job number
+	sed -i '/job '${1}' /d' ${file_job_logbook} 2>/dev/null
+}
+
+logbook_check_job()
+{
+	# $1: Folder name
+	awk '$5=="'${1}'" {print $2}' ${file_job_logbook} 2>/dev/null
+}
+
+
+logbook_refresh()
+{
+	local nums_job_curr=`ls ${folder_jobpool}/status_job* 2>/dev/null | sed -n 's/.*\/status_job\(.*\)/\1/p'`
+	# Assumed: at any time, logbook and job status file(s) should be consistent
+	# local nums_job_logbook=`cat ${file_job_logbook} 2>/dev/null | awk '{print $2}'`
+
+	local i=
+	for i in ${nums_job_curr}
+	do
+		# Check if it is done
+		local tmp=`cat ${folder_jobpool}/status_job${i} | grep "Done"`
+		if [ ! "x${tmp}" == "x" ]
+		then
+			# Job is done
+			# Show stdout
+			sed -n '/^<for_log_QSM>/!p' ${folder_jobpool}/"log_job${i}"
+			# Log QSM
+			sed -n 's/^<for_log_QSM>\(.*\)$/\1/p' ${folder_jobpool}/"log_job${i}" >> ${file_log_QSM}
+			# Remove log file
+			rm ${folder_jobpool}/"log_job${i}"
+			# Remove indicator
+			rm ${folder_jobpool}/"status_job${i}"
+			# Remove job from logbook
+			logbook_remove_job $i
+		fi
+	done		
+}
+
+
+get_job_info()
+{
+        eval ${1}_type=
+        eval ${1}_num=
+        eval ${1}_num_remote=
+        eval ${1}_addr_caller=
+        eval ${1}_folder_jobpool_remote=
+		eval ${1}_folder_data_remote=
+		eval ${1}_file_status_remote=
+
+	        # $1: dicom folder
+		if ! [ -e ${2}/${file_name_info} ]
+		then
+			return 1
+		fi
+
+		local type_job=`sed -n '5p' ${2}/${file_name_info}`
+        local num_job=`sed -n '6p' ${2}/${file_name_info}`
+        local num_job_remote=`sed -n '7p' ${2}/${file_name_info}`
+        local addr_caller=`sed -n '8p' ${2}/${file_name_info}`
+        local folder_jobpool_remote=`sed -n '9p' ${2}/${file_name_info}`
+        local folder_data_remote=`sed -n '10p' ${2}/${file_name_info}`
+        local file_status_job_remote=${folder_jobpool_remote}/"status_job${num_job_remote}"
+
+        eval ${1}_type=${type_job}
+        eval ${1}_num=${num_job}
+        eval ${1}_num_remote=${num_job_remote}
+        eval ${1}_addr_caller=${addr_caller}
+        eval ${1}_folder_jobpool_remote=${folder_jobpool_remote}
+        eval ${1}_folder_data_remote=${folder_data_remote}
+        eval ${1}_file_status_remote=${file_status_job_remote}
+}

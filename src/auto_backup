@@ -10,7 +10,25 @@ then
 fi
 curdir=`dirname ${me}`
 
-source ${curdir}/setup_config
+source ${curdir}/utils_basic
+
+
+check_status_QSM()
+{	
+	local status_QSM=
+
+	if [ "$(cat ${file_condition_QSM} 2>/dev/null)" == "0" ] && \
+	   [ "$(cat ${file_job_logbook} 2>/dev/null | wc -l)" -eq 0 ]
+	then
+		status_QSM="idle"
+	else
+		status_QSM="running"
+	fi
+
+	echo ${status_QSM}
+}
+
+
 
 
 # Work loop
@@ -53,7 +71,7 @@ do
 				# Need for backup
 
 				# Check status of QSM recon
-				if [ ! -e ${file_condition_QSM} ] || [ $(cat ${file_condition_QSM}) -eq 1 ]
+				if [ "$(check_status_QSM)" == "running" ]
 				then
 					# QSM is running
 					log "QSM recon running. Backup is not allowed"
@@ -65,7 +83,7 @@ do
 				echo "1" | cat > ${file_block_QSM}
 
 				# Check status of QSM recon, again
-				if [ $(cat ${file_condition_QSM}) -eq 1 ]
+				if [ "$(check_status_QSM)" == "running" ]
 				then
 					# QSM is running, block failed 
 					log "QSM recon running. Backup is not allowed"

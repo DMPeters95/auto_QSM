@@ -1,0 +1,171 @@
+#!/bin/bash
+
+me=`readlink $0`
+if [ "x${me}" == "x" ]
+then
+        me=$0
+fi
+curdir=`dirname ${me}`
+
+source ${curdir}/utils_job
+
+# Input
+num_job=$1
+type_job=$2		# {"local"|"remote"}
+type_agent=$3	# {"local"|"remote"}
+folder_job=$4
+
+# Indicator: job status
+file_status_job=${folder_jobpool}/"status_job${num_job}"
+file_log_job=${folder_jobpool}/"log_job${num_job}"
+
+# Redirect stdout and stderr to job log
+exec 3>&1 4>&2
+exec &> ${file_log_job}
+
+# Start job
+log "Job "${num_job}": Start."
+
+if [ "${type_job}" == "local" ] && [ "${type_agent}" == "remote" ]
+then
+
+	# Local job, remote agent
+
+	# Setup indicator: job status
+	echo "Busy::remote" | cat > ${file_status_job}
+
+	# Get remote address
+	get_remote_addr addr_remote
+	# Check remote address
+	tmp=`check_addr ${addr_remote}`
+	if [ "$tmp" == "0" ]
+	then
+		# Remote address valid
+		log "Remote agent at ${addr_remote} responds."
+
+		# Get own address
+		get_my_addr addr_own
+
+		# Modify ${file_name_info} for remote job (at called side)
+		crop_file ${folder_job}/${file_name_info} 10
+		sed -i '5c\remote' ${folder_job}/${file_name_info} 
+		sed -i '6c\'${num_job}'' ${folder_job}/${file_name_info} 	# Phony job number, overwritten at called side 
+		sed -i '7c\'${num_job}'' ${folder_job}/${file_name_info}
+		sed -i '8c\'${addr_own}'' ${folder_job}/${file_name_info} 
+		sed -i '9c\'${folder_jobpool}'' ${folder_job}/${file_name_info} 
+		sed -i '10c\'${folder_data}'' ${folder_job}/${file_name_info} 
+		file_log_copy_job=${folder_jobpool}/"log_copy_job${num_job}"
+
+		# Transfer DICOM
+		get_remote_folder_pool folder_pool_remote
+		rsync --remove-source-files -a ${folder_job} ${addr_remote}:${folder_pool_remote}/
+		rmdir ${folder_job}
+
+		# Wait until it finishes
+		i=0
+		while [ 1 ]
+		do
+			sleep 10
+
+			# Check if it is finishing
+			tmp=`cat ${file_status_job} | grep "Finishing"`
+			[ ! "x${tmp}" == "x" ] && break
+
+			i=$[$i + 1]
+			if [ $i -ge 6 ]
+			then
+				log "Job "${num_job}": Waiting."
+				i=0
+			fi
+		done		
+
+		# Agent finishes at called side
+		# Handle log (stdout and QSM)
+		log "Job "${num_job}": Output:"
+	 	cat ${file_log_copy_job} 2>/dev/null
+
+		# Delete temp log
+		rm ${file_log_copy_job} 2>/dev/null
+	else
+		# Remote address invalid
+		log "No remote agent responds."
+
+		# Mark job as finishing
+		echo "Failed::remote" | cat > ${file_status_job}
+	fi
+
+elif [ "${type_job}" == "local" ] && [ "${type_agent}" == "local" ]
+then
+
+	# Local job, local agent
+
+	# Setup indicator: job status
+	echo "Busy::local" | cat > ${file_status_job}
+
+	# Do not Modify ${file_name_info} 
+	
+	# Call agent to do the job
+	# Wait until it finishs
+	log "Job "${num_job}": Output:"
+	${CALL_AGENT} ${folder_job}
+
+	# Agent finishes
+	# No need for job log handling
+	# Mark job as finishing
+	echo "Finishing::local" | cat > ${file_status_job}
+
+
+elif [ "${type_job}" == "remote" ] && [ "${type_agent}" == "local" ]
+then
+
+	# Remote job, local agent
+
+	# Setup indicator: job status
+	echo "Busy::local" | cat > ${file_status_job}
+
+	# Modify ${file_name_info} for remote job
+	crop_file ${folder_job}/${file_name_info} 10
+	sed -i '5c\remote' ${folder_job}/${file_name_info} 
+	sed -i '6c\'${num_job}'' ${folder_job}/${file_name_info} 
+	num_job_remote=`sed -n '7p' ${folder_job}/${file_name_info}`
+	addr_caller=`sed -n '8p' ${folder_job}/${file_name_info}`
+	folder_jobpool_remote=`sed -n '9p' ${folder_job}/${file_name_info}`	
+	file_status_job_remote=${folder_jobpool_remote}/"status_job${num_job_remote}"
+
+	# Call agent to do the job
+	# Wait until it finishs
+	log "Job "${num_job}": Output:"
+	${CALL_AGENT} ${folder_job}
+
+	# Agent finishes
+	# No need for job log handling
+	# Mark job as finishing
+	echo "Finishing::local" | cat > ${file_status_job}
+
+	# Inform origin caller job finishing
+	echo "Finishing::remote" | ssh ${addr_caller} "cat > ${file_status_job_remote}"
+
+elif [ "${type_job}" == "remote" ] && [ "${type_agent}" == "remote" ]
+then
+
+	log "Not supported: remote job, remote agent"
+
+fi
+
+# Finish job
+log "Job "${num_job}": Done."
+
+# Restore stdout and stderr 
+exec 1>&3 2>&4 3>&- 4>&-
+
+# Mark job as done
+echo "Done::${type_agent}" | cat > ${file_status_job}
+
+# Remove job from logbook
+# logbook_remove_job ${num_job}
+
+# Delete job log
+# rm ${file_log_job}
+
+# Delete indicator
+# rm ${file_status_job}
