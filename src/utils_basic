@@ -10,10 +10,6 @@ curdir=`dirname ${me}`
 source ${curdir}/setup_config
 
 
-
-
-
-
 log()
 {
 	echo -n $(date +"[date %Y-%m-%d time %H:%M:%S]:")
@@ -64,5 +60,51 @@ crop_file()
 	fi	
 }
 
+
+check_status_QSM()
+{	
+	local status_QSM=
+
+	if [ "$(cat ${file_condition_QSM} 2>/dev/null)" == "0" ] && \
+	   [ "$(cat ${file_job_logbook} 2>/dev/null | wc -l)" -eq 0 ]
+	then
+		status_QSM="idle"
+	else
+		status_QSM="running"
+	fi
+
+	echo ${status_QSM}
+}
+
+
+is_idle()
+{
+	[ "$(check_status_QSM)" == "idle" ] && return 0 || return 1
+}
+
+
+parse_path()
+{
+	eval ${4}=\"$(echo ${1} | rev | cut -d'/' -f1 | rev)\"
+	eval ${3}=\"$(echo ${1} | rev | cut -d'/' -f2 | rev)\"
+	eval ${2}=\"$(echo ${1} | rev | cut -d'/' -f3 | rev)\"
+}
+
+
+check_sum_folder()
+{
+	local fd1=${1}
+	local fd2=${2}
+	echo "Check Sum for Folder:" ${fd1} ${fd2}
+
+	[ ! -d "${fd1}" ] || [ ! -d "${fd2}" ] && return 1
+
+	local sum1=$(find ${fd1} -type f -exec md5sum -b {} \; | awk '{print $1}' | sort | md5sum -b | awk '{print $1}')
+	local sum2=$(find ${fd2} -type f -exec md5sum -b {} \; | awk '{print $1}' | sort | md5sum -b | awk '{print $1}')
+
+	echo ${sum1} ${sum2}
+
+	[ "${sum1}" == "${sum2}" ] && return 0 || return 1
+}
 
 

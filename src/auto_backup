@@ -13,31 +13,47 @@ curdir=`dirname ${me}`
 source ${curdir}/utils_basic
 
 
-check_status_QSM()
-{	
-	local status_QSM=
+release_block()
+{
+	echo "0" | cat > ${file_block_QSM}
+}
 
-	if [ "$(cat ${file_condition_QSM} 2>/dev/null)" == "0" ] && \
-	   [ "$(cat ${file_job_logbook} 2>/dev/null | wc -l)" -eq 0 ]
-	then
-		status_QSM="idle"
-	else
-		status_QSM="running"
-	fi
+set_block()
+{
+	echo "1" | cat > ${file_block_QSM}	
+}
 
-	echo ${status_QSM}
+
+try_block()
+{
+	# Check status of QSM recon
+	! is_idle && return 1
+
+	# QSM recon is idle
+	# Block the recon
+	set_block
+
+	# Check status of QSM recon, again
+	# If block fails, release the block
+	! is_idle && release_block && return 1
+
+	# Block succeeds
+	return 0
 }
 
 
 
-
 # Work loop
-echo "0" | cat > ${file_block_QSM}
+release_block
+
 flag_backup=1
 while [ 1 ]
 do
 
 	sleep ${period_auto_backup}
+
+	# Update configuration
+	source ${curdir}/setup_config
 
 	hour_now=`date +"%H"`
 
@@ -70,30 +86,8 @@ do
 
 				# Need for backup
 
-				# Check status of QSM recon
-				if [ "$(check_status_QSM)" == "running" ]
-				then
-					# QSM is running
-					log "QSM recon running. Backup is not allowed"
-					continue
-				fi
-
-				# QSM recon is idle
-				# Block the recon
-				echo "1" | cat > ${file_block_QSM}
-
-				# Check status of QSM recon, again
-				if [ "$(check_status_QSM)" == "running" ]
-				then
-					# QSM is running, block failed 
-					log "QSM recon running. Backup is not allowed"
-
-					# Release the recon, wait for another chance
-					echo "0" | cat > ${file_block_QSM}
-					continue
-				fi	
-
-
+				# Check QSM recon status
+				! is_idle && log "QSM recon running. Backup is not allowed" && continue
 
 				# Now we could start the backup
 				echo ""
@@ -106,17 +100,29 @@ do
 				[ "x${mount_backup_fix}" == "x" ] && mount_backup=`df -k | sed '/ /! {N; s/\n//;}' | tail -n 1 | awk '{print $NF}'`
 				[ ! -e ${mount_backup}/data ] && mkdir -p ${mount_backup}/data
 
+				# Get all paths to be copied
+				path_copy_list=$(ls -d ${folder_data}/*/*/*/DICOM 2>/dev/null | sed 's|/DICOM||')
 
-				for AET_peer in $(ls ${folder_data})
+				# Check QSM recon status, again (just to be sure)
+				! is_idle && log "QSM recon running. Backup is not allowed" && continue
+
+
+
+				# Now good to go
+				for each_path in ${path_copy_list}
 				do
-					log "Now copying ${AET_peer} to ${mount_backup}"
+
+					# Peer found to be copied
+					[ ${each_path: -1} == "/" ] && each_path=${each_path::-1}
+					parse_path ${each_path} peer_copy exam_copy series_copy
+					# log "Now copying ${peer_copy}/${exam_copy}/${series_copy} to ${mount_backup}"
 
 					# Check if there is enough space on the external drive
 					space_backup=`df -k | sed '/ /! {N; s/\n//;}' | awk '$NF=="'${mount_backup}'" {print $4}'`
 					[ "x${space_backup}" == "x" ] && space_backup="0"
-					size_folder=`get_folder_size ${folder_data}/${AET_peer} 0 -k | awk '{ print $1 }'`
+					size_folder=`get_folder_size ${each_path} 0 -k | awk '{ print $1 }'`
 
-					log "Size of ${AET_peer}: ${size_folder}, Available space_backup ${space_backup}"
+					# log "Size of ${AET_peer}: ${size_folder}, Available space_backup ${space_backup}"
 
 
 					if [ "${space_backup}" -lt "${size_folder}" ]
@@ -124,65 +130,78 @@ do
 
 						# Not enough space for the current folder
 						log "No enough space on ${mount_backup}. Stopping backup"
-						echo -e "No enough space on ${mount_backup} (size ${space_backup}) for folder {AET_peer} (size ${siz_folder})" | mail -s "Backup disk full for Hackintosh" ${email_notice}
+						echo -e "No enough space on ${mount_backup} (size ${space_backup}) for folder ${each_path} (size ${siz_folder})" | mail -s "Backup disk full for Hackintosh" ${email_notice}
 
 						# Stop backup
 						flag_backup=0
-
-						# Unblock the recon
-						echo "0" | cat > ${file_block_QSM}							
 
 						break
 
 					else
 
-						cp -rf ${folder_data}/${AET_peer} ${mount_backup}/data/ 
-						flag_copy_done=$?
-						if [ ! ${flag_copy_done} -eq 0 ] 
+						# Block QSM recon
+						! try_block && log "QSM recon running. Backup block failed" && break
+
+						# Copy file over
+						#cp -rf ${folder_data}/${AET_peer} ${mount_backup}/data/
+						mkdir -p ${mount_backup}/data/${peer_copy}/${exam_copy}/${series_copy}
+						rsync -a --remove-source-files ${each_path}/ ${mount_backup}/data/${peer_copy}/${exam_copy}/${series_copy}/
+
+						# Check if folder is empty
+						src_file_list=$(find ${each_path} -type f)
+						if [ -z "${src_file_list}" ]
 						then
-							# Copy not done properly
-							log "Copying failed. Stopping backup"
 
-							# Unblock the recon
-							echo "0" | cat > ${file_block_QSM}	
+							# Folder is empty
+							# Transfer succeeded						
+							# log "Copying done."
 
-							break
+							# Remove series folder
+							find ${each_path} -depth -type d -empty -delete
+
+							# Remove empty exam/peer if possible
+							rmdir ${folder_data}/${peer_copy}/${exam_copy} 2>/dev/null
+							rmdir ${folder_data}/${peer_copy} 2>/dev/null
+
+							log "${peer_copy} ${exam_copy} ${series_copy} archived"
+
+						# else
+
+							# Folder not empty
+							# Transfer is not clean (src files being updated during transfer)
+
+							# Do nothing
 
 						fi
 
-						# Copying done
-						log "Copying done."
-						rm -rf ${folder_data}/${AET_peer}
 
-						log "Archive ${AET_peer} removed"
+						# Release block
+						release_block
 
-					fi
+					fi			
+
+					# Wait
+					sleep 6
 
 				done
 
+				# Update all paths to be copied
+				path_copy_list=$(ls -d ${folder_data}/*/*/*/DICOM 2>/dev/null | sed 's|/DICOM||')				
 
-			 	space=`df -k | sed '/ /! {N; s/\n//;}' | awk '$1=="'${disk_data}'" {print $4}'`
-			 	log "New avaiable space: ${space}"
-
-
-			 	# Check external disk space, inform via email if small
-				space_backup=`df -k | sed '/ /! {N; s/\n//;}' | awk '$NF=="'${mount_backup}'" {print $4}'`
-				[ "x${space_backup}" == "x" ] && space_backup=0
-
-
-				if [ ${space_backup} -lt ${margin_external} ]
+				if [ -z "${path_copy_list}" ]
 				then
 
-					log "Low space on ${mount_backup}. Switching to new disk is recommended"
-					echo -e "Low space on ${mount_backup} (size ${space_backup})" | mail -s "Low space on external disk for Hackintosh" ${email_notice}
+					# No backup needed, or all backup have been successful
+
+				 	space=`df -k | sed '/ /! {N; s/\n//;}' | awk '$1=="'${disk_data}'" {print $4}'`
+				 	log "New available space: ${space}"
+
+				 	log "========== Backup finished ==========="
+
+					# Stop backup
+					flag_backup=0
 
 				fi
-
-			 	# Stop backup
-			 	flag_backup=0
-
-				# Unblock the recon
-				echo "0" | cat > ${file_block_QSM}
 
 			fi
 
@@ -192,8 +211,8 @@ do
 
 		flag_backup=1
 
-		# Unblock the recon (Just in case otherwise)
-		echo "0" | cat > ${file_block_QSM}
+		# Unblock the recon (Just in case)
+		release_block
 
 	fi
 
