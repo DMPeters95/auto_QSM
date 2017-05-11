@@ -27,7 +27,7 @@ then
 	medin ${folder_input} -t QSM_even -si -sk 2 1 -di
 	# Average odd and even echo QSM
 	echo "Averaging odd and even echoes"
-	mkdir QSM
+	mkdir -p QSM
 	${DICOM_AVE} QSM_odd QSM_even QSM
 else
 	medin ${folder_input} -t SWI -of MS -si

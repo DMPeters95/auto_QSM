@@ -46,7 +46,7 @@ try_block()
 # Work loop
 release_block
 
-flag_backup=1
+status_backup=1
 while [ 1 ]
 do
 
@@ -60,16 +60,16 @@ do
 	# Chack manual switch
 	flag_manual_switch=1
 	[ -e ${file_manual_switch_backup} ] && flag_manual_switch=`cat ${file_manual_switch_backup}`
-	[ ${flag_manual_switch} -eq 2 ] && flag_backup=1
+	[ ${flag_manual_switch} -eq 2 ] && [ ${status_backup} -eq 0 ] && status_backup=1
 
 	# Backup could only be run between 3AM and 5AM
 	# or manual enforced at anytime (flag_manual_switch == 2)
-	# and can only run once per day (flag_backup = 1 --> 0)
+	# and can only run once per day (status_backup = 1 --> 2 --> 0)
 	if     [ ${flag_manual_switch} -eq 2 ] \
 		|| [ ${flag_manual_switch} -eq 1    -a    ${hour_now} -ge 3    -a    ${hour_now} -le 5 ]
 	then
 
-		if [ ${flag_backup} -eq 1 ]
+		if [ ${status_backup} -ge 1 ]
 		then
 
 			# Check main disk space
@@ -81,7 +81,10 @@ do
 				continue
 			fi
 			
-			if [ ${space} -lt ${margin_space} ]	
+			# Continue backup anyway (status 2)
+			# or start backup when lower than margin space (status 1)
+			if     [ ${status_backup} -eq 2 ] \
+				|| [ ${space} -lt ${margin_space} ]	
 			then
 
 				# Need for backup
@@ -89,9 +92,23 @@ do
 				# Check QSM recon status
 				! is_idle && log "QSM recon running. Backup is not allowed" && continue
 
-				# Now we could start the backup
+				# Now we could start/continue the backup
 				echo ""
-				log "========== Backup initiated =========="
+				if [ ${status_backup} -eq 1 ]
+				then
+					
+					# Start new backup
+					log "========== Backup initiated =========="
+
+					status_backup=2
+
+				else
+
+					# Continue backup
+					log "Continue backup"
+
+				fi
+
 
 				log "Data folder content:"
 				get_folder_size ${folder_data} 1 -h
@@ -133,7 +150,7 @@ do
 						echo -e "No enough space on ${mount_backup} (size ${space_backup}) for folder ${each_path} (size ${siz_folder})" | mail -s "Backup disk full for Hackintosh" ${email_notice}
 
 						# Stop backup
-						flag_backup=0
+						status_backup=0
 
 						break
 
@@ -199,7 +216,7 @@ do
 				 	log "========== Backup finished ==========="
 
 					# Stop backup
-					flag_backup=0
+					status_backup=0
 
 				fi
 
@@ -209,7 +226,7 @@ do
 
 	else
 
-		flag_backup=1
+		status_backup=1
 
 		# Unblock the recon (Just in case)
 		release_block
