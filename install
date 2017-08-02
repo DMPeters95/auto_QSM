@@ -70,13 +70,13 @@ else
 fi
 entry_crontab="\
 # This is the beginning of crontab related to Auto QSM recon
-@reboot export PATH=$PATH:${folder_root}/bin:/usr/local/sbin:/opt/local/bin:${HOME}/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/X11/bin;\
-export ${name_lpath}=${HOME}/MEDI/lib;\
+@reboot export PATH=${folder_root}/bin:/usr/local/sbin:/opt/local/bin:${HOME}/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/X11/bin\${PATH:+:\$PATH};\
+export ${name_lpath}=${HOME}/MEDI/lib:/usr/local/cuda/lib64\${${name_lpath}:+:\$${name_lpath}};\
 export DCMDICTPATH=${HOME}/MEDI/etc/gems-dicom-dict_Offis.txt;\
 mkdir -p ${folder_root}/buffer;\
 ${folder_root}/src/check_auto_QSM >> ${folder_root}/buffer/log_stdout_daemon 2>&1
-*/1 * * * * export PATH=$PATH:${folder_root}/bin:/usr/local/sbin:/opt/local/bin:${HOME}/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/X11/bin;\
-export ${name_lpath}=${HOME}/MEDI/lib;\
+*/1 * * * * export PATH=${folder_root}/bin:/usr/local/sbin:/opt/local/bin:${HOME}/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/X11/bin\${PATH:+:\$PATH};\
+export ${name_lpath}=${HOME}/MEDI/lib:/usr/local/cuda/lib64\${${name_lpath}:+:\$${name_lpath}};\
 export DCMDICTPATH=${HOME}/MEDI/etc/gems-dicom-dict_Offis.txt;\
 mkdir -p ${folder_root}/buffer;\
 ${folder_root}/src/check_auto_QSM >> ${folder_root}/buffer/log_stdout_daemon 2>&1
