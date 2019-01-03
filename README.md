@@ -17,6 +17,7 @@ This package sets up a DICOM image reconstruction server. It is able to:
 	- Ubuntu 15.10 64bit
 	- Mac OS X 10.6.8
 	- Mac OS X 10.10
+    - RedHat 7.5 x86_64
 
 - Software:
 	- [daemonize](http://software.clapper.org/daemonize/index.html)
